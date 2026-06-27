@@ -19,9 +19,6 @@ from collections import deque
 import numpy as np
 import sounddevice as sd
 
-# Fixed 10 ms blocks so the ring buffer maps cleanly to time.
-_BLOCK_MS = 10
-
 
 class Recorder:
     def __init__(
@@ -35,7 +32,6 @@ class Recorder:
         self.input_device = input_device
         self.preroll_sec = max(0.0, preroll_sec)
         self.enable_preroll = enable_preroll and self.preroll_sec > 0
-        self._blocksize = max(1, sample_rate * _BLOCK_MS // 1000)
         self._preroll_samples = int(self.preroll_sec * sample_rate)
 
         self._lock = threading.Lock()
@@ -74,15 +70,20 @@ class Recorder:
             dtype="float32",
             device=self.input_device,
             callback=self._callback,
-            blocksize=self._blocksize,
+            blocksize=0,  # let the driver choose (most compatible)
         )
         self._stream.start()
 
     # --- lifecycle --------------------------------------------------------
     def begin(self) -> None:
-        """Start the always-on stream (preroll mode). Call once when Koe starts."""
+        """Start the always-on stream (preroll mode). Call once when Koe starts.
+        If the mic can't be opened, fall back to opening it per-take so dictation
+        still works (just without preroll)."""
         if self.enable_preroll and self._stream is None:
-            self._open_stream()
+            try:
+                self._open_stream()
+            except Exception:
+                self.enable_preroll = False
 
     def start(self) -> None:
         """Begin a dictation take, seeding it with the preroll audio."""
