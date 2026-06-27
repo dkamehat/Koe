@@ -11,6 +11,8 @@ import sys
 
 import numpy as np
 
+from .formatter import collapse_runaway_repeats
+
 
 def _ensure_cuda_dlls_on_path() -> None:
     """Make the pip-installed cuBLAS/cuDNN DLLs discoverable on Windows.
@@ -87,13 +89,19 @@ class TranscriptionEngine:
             compression_ratio_threshold=2.4,
             log_prob_threshold=-1.0,
             no_speech_threshold=0.6,
+            # Gently discourage the decoder from looping on the same tokens
+            # (repetition hallucination on noise/silence).
+            repetition_penalty=1.1,
             # Bias decoding toward the user's terminology (proper nouns / jargon).
             initial_prompt=initial_prompt,
             vad_filter=True,  # trims silence / breath gaps for cleaner output
             vad_parameters={"min_silence_duration_ms": 300},
             condition_on_previous_text=False,
         )
-        return "".join(seg.text for seg in segments).strip()
+        text = "".join(seg.text for seg in segments).strip()
+        # Deterministic safety net in case a loop slipped past the decode-time
+        # guards above — never hand a thousand repeated tokens downstream.
+        return collapse_runaway_repeats(text)
 
 
 def _cuda_available() -> bool:

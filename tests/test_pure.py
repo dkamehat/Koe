@@ -2,7 +2,7 @@
 Run with:  python -m pytest
 """
 
-from koe.formatter import format_text
+from koe.formatter import format_text, collapse_runaway_repeats
 from koe.dictionary import Dictionary
 from koe.refiner import _language_preserved, _num_predict, _find_boundary, _has_cjk
 from koe.context_grabber import extract_terms
@@ -21,6 +21,16 @@ def test_formatter_spoken_period():
 
 def test_formatter_disabled_is_passthrough():
     assert format_text("um hello", enable=False) == "um hello"
+
+def test_collapse_runaway_repeats_cjk_loop():
+    assert collapse_runaway_repeats("私はハビ" + "シャッ" * 100) == "私はハビシャッ"
+
+def test_collapse_runaway_repeats_english_loop():
+    assert collapse_runaway_repeats("ok " + "the " * 30 + "end") == "ok the end"
+
+def test_collapse_leaves_normal_text_alone():
+    s = "これはテストです。明日の会議は10時からです。"
+    assert collapse_runaway_repeats(s) == s
 
 
 # --- dictionary -------------------------------------------------------------

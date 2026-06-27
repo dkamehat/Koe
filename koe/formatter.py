@@ -25,6 +25,24 @@ _COMMANDS: list[tuple[str, str]] = [
 ]
 
 
+# A short unit (1-12 chars) repeated 6+ times back-to-back. Whisper falls into
+# this kind of loop on noise/silence ("シャッシャッシャッ…", "the the the…"); real
+# speech almost never repeats a short unit that many times in a row.
+_RUNAWAY_REPEAT = re.compile(r"(.{1,12}?)\1{5,}", re.DOTALL)
+
+
+def collapse_runaway_repeats(text: str) -> str:
+    """Collapse a degenerate repetition loop to a single occurrence of the unit.
+
+    A deterministic safety net for Whisper's repetition-hallucination failure
+    mode, so a stuck decode never reaches the user (or makes the refiner chew on
+    a thousand repeated tokens).
+    """
+    if not text:
+        return text
+    return _RUNAWAY_REPEAT.sub(r"\1", text)
+
+
 def _apply_commands(text: str) -> str:
     for pattern, repl in _COMMANDS:
         text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
