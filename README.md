@@ -1,5 +1,7 @@
 # Koe 声 🎙️
 
+**English** | [日本語](README.ja.md)
+
 **Local, offline voice dictation for Windows.** Hold (or tap) a key, speak, and clean
 text is typed into whatever app has focus. Your speech is transcribed **on your own
 machine** — nothing is ever sent to the cloud.
