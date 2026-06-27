@@ -35,7 +35,7 @@ class Config:
     # Examples: "right ctrl", "right alt", "f9", "scroll lock".
     hotkey: str = "right ctrl"
     # "ptt" = push-to-talk (hold). "toggle" = press once to start, again to stop.
-    hotkey_mode: str = "ptt"
+    hotkey_mode: str = "toggle"
 
     # --- Audio ---
     sample_rate: int = 16000
