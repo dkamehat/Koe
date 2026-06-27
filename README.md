@@ -17,6 +17,8 @@ machine** — nothing is ever sent to the cloud.
 - 🧠 **Context grounding** — reads the focused window/field locally to spell proper nouns
   and code identifiers correctly.
 - 📚 **Self-healing dictionary** — teach it a correction once; it fixes that term forever.
+- 🎚️ **Preroll capture** — an always-on ring buffer prepends the moment *before* you
+  press the key, so the first word is never clipped ("…ello" → "Hello").
 - ⌨️ **Types anywhere** — Unicode-safe injection into any Windows app.
 
 ## Requirements
@@ -96,6 +98,20 @@ Created on first run. Key options:
 | `refiner_backend` | `auto`                 | `rules` / `ollama` / `claude` / `openai` |
 | `stream_output`   | `true`                 | type each sentence as it's ready (faster feel) |
 | `enable_context`  | `true`                 | read focused window/field for grounding |
+| `enable_preroll`  | `true`                 | always-on mic ring buffer so the first word isn't clipped |
+| `preroll_sec`     | `0.3`                  | how much pre-keypress audio to prepend |
+
+## Measuring quality on your own voice (`bench.py`)
+
+"Good enough" is personal, so make changes *comparable* instead of guessing:
+
+```powershell
+python bench.py record "the exact text you'd accept"   # record a sample (Enter to stop)
+python bench.py run                                     # score all samples (shows CER + diffs)
+python bench.py run --model large-v3 --refiner rules    # quick A/B without editing config
+```
+
+Samples live in `./bench/` and are gitignored — your voice never leaves the machine.
 
 ## How it works
 

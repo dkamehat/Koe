@@ -12,6 +12,8 @@ config.json
 dictionary.txt
 # temporary / test audio
 *.wav
+# personal quality-bench voice samples
+bench/
 
 # --- OS / editor ---
 Thumbs.db

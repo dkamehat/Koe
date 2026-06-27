@@ -39,6 +39,11 @@ class Config:
     sample_rate: int = 16000
     # None = system default input device. Or set a device index (see --list-devices).
     input_device: int | None = None
+    # Preroll prepends the last N seconds of audio so the first word is never
+    # clipped by mic start-up latency. Requires an always-on mic while Koe runs;
+    # set enable_preroll=false to only open the mic during a take (no preroll).
+    enable_preroll: bool = True
+    preroll_sec: float = 0.3
 
     # --- Output ---
     # "paste"  = copy to clipboard + Ctrl+V into the active app (Unicode-safe, fast).

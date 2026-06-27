@@ -33,7 +33,9 @@ RESET = "\033[0m"
 class KoeApp:
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self.recorder = Recorder(cfg.sample_rate, cfg.input_device)
+        self.recorder = Recorder(cfg.sample_rate, cfg.input_device,
+                                 preroll_sec=cfg.preroll_sec,
+                                 enable_preroll=cfg.enable_preroll)
         self.dictionary = Dictionary() if cfg.enable_dictionary else None
         self.refiner = build_refiner(cfg)
         self.engine: TranscriptionEngine | None = None
@@ -64,6 +66,12 @@ class KoeApp:
         self._loading = True
         self._status(f"loading {self.cfg.model}…")
         print(f"{DIM}Loading model '{self.cfg.model}' …{RESET}")
+        # Start the always-on mic now so the preroll ring is warm by the time
+        # the model finishes loading and the user speaks.
+        try:
+            self.recorder.begin()
+        except Exception as exc:
+            print(f"{YELLOW}mic warning: {exc}{RESET}")
         t0 = time.time()
         engine = TranscriptionEngine(
             model=self.cfg.model,
@@ -127,8 +135,14 @@ class KoeApp:
         self._recording = False
         audio = self.recorder.stop()
         dur = audio.size / self.cfg.sample_rate
-        if dur < 0.3:
+        # Preroll inflates the take by ~preroll_sec, so raise the floor to still
+        # skip accidental taps. Also warn if the mic captured (near-)silence.
+        preroll = self.cfg.preroll_sec if self.cfg.enable_preroll else 0.0
+        if dur < 0.3 + preroll:
             print(f"\r{YELLOW}… too short, skipped{RESET}            ")
+            return
+        if self.recorder.peak < 0.005:
+            print(f"\r{YELLOW}… no audio detected — check the mic/input device{RESET}")
             return
         print(f"\r{CYAN}◌ transcribing{RESET} {DIM}({dur:.1f}s audio)…{RESET}     ",
               end="", flush=True)
@@ -365,6 +379,10 @@ class KoeApp:
 
     def _quit(self) -> None:
         print(f"\n{DIM}Quitting…{RESET}")
+        try:
+            self.recorder.close()
+        except Exception:
+            pass
         keyboard.unhook_all()
         # Unblock keyboard.wait()
         os._exit(0)
