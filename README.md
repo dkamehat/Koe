@@ -6,6 +6,8 @@
 text is typed into whatever app has focus. Your speech is transcribed **on your own
 machine** — nothing is ever sent to the cloud.
 
+<p align="center"><img src="docs/demo.gif" alt="Koe demo — tap Right Ctrl, speak, and clean text appears" width="720"></p>
+
 > Thesis: **anyone can use it, everyone stays safe.** Free, offline, no account, no
 > telemetry. Inspired by [Aqua Voice](https://withaqua.com/), rebuilt to run 100% locally.
 
