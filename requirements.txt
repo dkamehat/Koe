@@ -1,0 +1,21 @@
+# --- Core: local speech-to-text (runs fully offline after first model download) ---
+faster-whisper==1.1.1
+requests>=2.31
+sounddevice==0.5.1
+numpy==2.2.6
+
+# --- Hotkeys + text injection into the active window ---
+keyboard==0.13.5
+pyperclip==1.9.0
+
+# --- Local context grounding (read the focused window/field via UI Automation) ---
+uiautomation==2.0.20
+
+# --- Optional system-tray UI ---
+pystray==0.19.5
+Pillow==11.3.0
+
+# --- CUDA runtime for the RTX GPU (CTranslate2 / faster-whisper backend) ---
+# These ship the cuBLAS + cuDNN DLLs so CUDA works without a manual CUDA Toolkit install.
+nvidia-cublas-cu12==12.4.5.8
+nvidia-cudnn-cu12==9.1.0.70

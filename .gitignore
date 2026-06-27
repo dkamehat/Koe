@@ -1,0 +1,20 @@
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Koe user data & runtime state (machine-specific / private) ---
+# config.json: generated on first run; personal settings
+config.json
+# dictionary.txt: YOUR personal terms — never publish this
+dictionary.txt
+# temporary / test audio
+*.wav
+
+# --- OS / editor ---
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

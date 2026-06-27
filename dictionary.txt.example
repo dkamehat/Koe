@@ -1,0 +1,32 @@
+# Koe — terminology dictionary (EXAMPLE)
+#
+# Copy this file to `dictionary.txt` (or just edit dictionary.txt, which is
+# created automatically on first run) and add your own terms.
+# This file stays 100% local and is never uploaded anywhere.
+#
+# 1 line = 1 entry. Write proper nouns / jargon so they transcribe correctly:
+#     Kubernetes
+#     PostgreSQL
+#
+# Use 'heard => canonical' to auto-correct a recurring mis-transcription
+# (left = what the recognizer hears, right = the spelling you want):
+#     クバネティス => Kubernetes
+#     ポスグレ => PostgreSQL
+#
+# Corrections you make from the tray ("correct last output") are appended here.
+# ---------------------------------------------------------------------------
+
+# Example tech terms
+CUDA
+Ollama
+Qwen
+Whisper
+Kubernetes
+PostgreSQL
+ガードレール
+トランスフォーメーション
+
+# Example corrections
+オルマン => Ollama
+クエン => Qwen
+クバネティス => Kubernetes
