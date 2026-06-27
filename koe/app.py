@@ -16,7 +16,7 @@ import keyboard
 from .config import Config
 from .dictionary import Dictionary
 from .engine import TranscriptionEngine
-from .injector import inject
+from .injector import get_clipboard, inject, inject_chunk, restore_clipboard
 from .recorder import Recorder
 from .refiner import build_refiner
 
@@ -145,9 +145,11 @@ class KoeApp:
             # #2 Context grounding runs CONCURRENTLY with STT so its cost (UI
             # Automation can be slow on some apps) is hidden under transcription,
             # and is hard-capped by a timeout so it can never stall dictation.
+            # PRIVACY: never read on-screen text when the refiner is a CLOUD
+            # backend — that text would otherwise be sent off the machine.
             ctx_box: dict = {}
             ctx_thread = None
-            if self.cfg.enable_context:
+            if self.cfg.enable_context and not self.refiner.is_cloud:
                 def _grab():
                     try:
                         from .context_grabber import get_context
@@ -217,23 +219,28 @@ class KoeApp:
         return text
 
     def _refine_streaming(self, raw, terms, context) -> str:
-        """Type each sentence as the refiner produces it (forward-append)."""
+        """Type each sentence as the refiner produces it (forward-append).
+        The clipboard is saved once and restored once (not per sentence)."""
         acc: list[str] = []
+        mode = self.cfg.output_mode
+        prev_clip = get_clipboard() if mode == "paste" else None
 
         def emit(sentence: str) -> None:
             s = self.dictionary.apply(sentence) if self.dictionary else sentence
             acc.append(s)
-            inject(s, self.cfg.output_mode)
+            inject_chunk(s, mode)
 
         self._suppress = True
         try:
             full, ok = self.refiner.refine_stream(raw, terms, context, emit)
             if not ok:
                 # Empty or translated -> nothing was emitted; fall back safely.
+                restore_clipboard(prev_clip)
                 self._suppress = False
                 return self._emit_final(self.refiner._fallback(raw))
             if self.cfg.trailing_space:
-                inject(" ", self.cfg.output_mode)
+                inject_chunk(" ", mode)
+            restore_clipboard(prev_clip)
         finally:
             self._suppress = False
         text = "".join(acc).strip()

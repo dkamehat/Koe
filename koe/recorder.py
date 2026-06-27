@@ -45,10 +45,6 @@ class Recorder:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(chunks, axis=0).reshape(-1).astype(np.float32, copy=False)
 
-    def snapshot(self) -> np.ndarray:
-        """Audio captured so far, WITHOUT stopping — used for live partials."""
-        return self._concat()
-
     def stop(self) -> np.ndarray:
         """Stop recording and return the full take as a 1-D float32 array."""
         if self._stream is not None:

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "koe"
+version = "0.1.0"
+description = "Local, offline voice dictation for Windows (inspired by Aqua Voice)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "dkamehat" }]
+keywords = ["speech-to-text", "dictation", "whisper", "ollama", "local", "offline"]
+classifiers = [
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Environment :: GPU :: NVIDIA CUDA",
+]
+# Single source of truth for runtime deps: requirements.txt.
+dynamic = ["dependencies"]
+
+[project.scripts]
+koe = "koe.app:main"
+
+[tool.setuptools]
+packages = ["koe"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }

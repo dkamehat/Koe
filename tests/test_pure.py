@@ -1,0 +1,91 @@
+"""Unit tests for Koe's pure logic — no model, GPU, mic, or network needed.
+Run with:  python -m pytest
+"""
+
+from koe.formatter import format_text
+from koe.dictionary import Dictionary
+from koe.refiner import _language_preserved, _num_predict, _find_boundary, _has_cjk
+from koe.context_grabber import extract_terms
+
+
+# --- formatter --------------------------------------------------------------
+
+def test_formatter_english_caps_and_newline():
+    assert format_text("hello world new line this is a test") == "Hello world\nthis is a test"
+
+def test_formatter_japanese_kaigyou():
+    assert format_text("これはテストです 改行 二行目") == "これはテストです\n二行目"
+
+def test_formatter_spoken_period():
+    assert format_text("let's go full stop done") == "Let's go. Done"
+
+def test_formatter_disabled_is_passthrough():
+    assert format_text("um hello", enable=False) == "um hello"
+
+
+# --- dictionary -------------------------------------------------------------
+
+def test_dictionary_parse_apply_and_prompt(tmp_path):
+    p = tmp_path / "dict.txt"
+    p.write_text("Foo Bar\nふーばー => Foo Bar\n", encoding="utf-8")
+    d = Dictionary(p)
+    assert "Foo Bar" in d.terms
+    assert d.apply("ふーばーのテスト") == "Foo Barのテスト"
+    assert "Foo Bar" in (d.initial_prompt() or "")
+
+def test_dictionary_learn_persists(tmp_path):
+    p = tmp_path / "dict.txt"
+    d = Dictionary(p)
+    d.learn("ほげ", "Hoge")
+    assert d.apply("ほげです") == "Hogeです"
+    assert "ほげ => Hoge" in p.read_text(encoding="utf-8")
+
+def test_dictionary_longer_rules_win(tmp_path):
+    p = tmp_path / "dict.txt"
+    p.write_text("えーびー => AB\nえーびーしー => ABC\n", encoding="utf-8")
+    d = Dictionary(p)
+    assert d.apply("えーびーしー") == "ABC"   # longest match applied first
+
+
+# --- refiner guards ---------------------------------------------------------
+
+def test_language_guard_blocks_translation():
+    assert _language_preserved("これは日本語です", "This is English.") is False
+
+def test_language_guard_allows_same_language():
+    assert _language_preserved("これは日本語です", "これは日本語です。") is True
+    assert _language_preserved("um hello world", "Hello world.") is True
+
+def test_num_predict_bounds():
+    assert _num_predict("") == 64
+    assert _num_predict("x" * 1000) == 512
+    assert 64 <= _num_predict("適度な長さの文章です") <= 512
+
+def test_has_cjk():
+    assert _has_cjk("こんにちは") is True
+    assert _has_cjk("漢字") is True
+    assert _has_cjk("hello world") is False
+
+
+# --- streaming sentence boundary -------------------------------------------
+
+def test_boundary_japanese():
+    assert _find_boundary("これは。残り") == 3
+
+def test_boundary_ascii_needs_whitespace():
+    assert _find_boundary("hello. world") == 5
+
+def test_boundary_does_not_split_decimal():
+    assert _find_boundary("it is 3.5 times") == -1
+
+def test_boundary_waits_on_trailing_dot():
+    assert _find_boundary("the end.") == -1      # wait for next char
+    assert _find_boundary("the end. ") == 7      # now it's a boundary
+
+
+# --- context term extraction ------------------------------------------------
+
+def test_extract_terms_pulls_identifiers():
+    terms = extract_terms("def get_user_by_id(user_id): return UserModel")
+    assert "get_user_by_id" in terms
+    assert "UserModel" in terms

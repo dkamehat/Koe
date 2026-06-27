@@ -68,7 +68,8 @@ Right-click the tray icon for settings; use `run.py --console` for a plain termi
 
 **Safety:** cloud backends are never used unless you explicitly select them, and API keys
 are read from **environment variables only** — never stored in `config.json`, so a shared
-config can't leak a key or silently phone home.
+config can't leak a key or silently phone home. Context grounding is **automatically
+disabled when a cloud refiner is selected**, so on-screen text never leaves your machine.
 
 > A ChatGPT/Claude **subscription is not the same as developer API access** (the API is
 > billed separately). For zero-cost + high accuracy, use the local **`ollama`** backend.

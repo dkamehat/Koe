@@ -31,8 +31,28 @@ import requests
 _ollama_session = requests.Session()
 _ollama_session.trust_env = False
 
-# Sentence terminators we commit on when streaming (JP + EN + newline).
-_BOUNDARY = "。．！？\n.!?"
+# Full-width / newline terminators always end a sentence when streaming.
+_HARD_BOUNDARY = "。！？\n"
+# ASCII terminators (. ! ?) only end a sentence when followed by whitespace, so
+# we don't split inside "3.5", "v1.2", "U.S." mid-stream.
+_ASCII_BOUNDARY = ".!?"
+
+
+def _find_boundary(buf: str) -> int:
+    """Index of the first sentence-ending char in buf, or -1 if none yet.
+    Waits (returns -1) on a trailing ASCII '.' until the next char arrives, so a
+    decimal like '3.5' isn't split."""
+    for i, c in enumerate(buf):
+        if c in _HARD_BOUNDARY:
+            return i
+        if c in _ASCII_BOUNDARY:
+            nxt = buf[i + 1] if i + 1 < len(buf) else ""
+            if nxt == "":
+                return -1            # end of buffer — wait for the next chunk
+            if nxt.isspace():
+                return i
+            # otherwise (digit/letter) it's not a boundary; keep scanning
+    return -1
 
 from .formatter import format_text
 
@@ -147,6 +167,7 @@ class Refiner:
     """Base: deterministic rule formatting, no LLM (the safe default)."""
 
     name = "rules"
+    is_cloud = False  # True for backends that send text off the machine
 
     def __init__(self, auto_capitalize: bool = True):
         self.auto_capitalize = auto_capitalize
@@ -228,7 +249,7 @@ class OllamaRefiner(Refiner):
                 buf += chunk
                 full += chunk
                 # Commit completed sentences from the buffer.
-                i = next((k for k, c in enumerate(buf) if c in _BOUNDARY), -1)
+                i = _find_boundary(buf)
                 while i != -1:
                     sentence, buf = buf[: i + 1], buf[i + 1:]
                     if not checked:
@@ -236,7 +257,7 @@ class OllamaRefiner(Refiner):
                         if not _language_preserved(raw, full):
                             return None, False   # translated -> abort before emitting
                     emit(sentence)
-                    i = next((k for k, c in enumerate(buf) if c in _BOUNDARY), -1)
+                    i = _find_boundary(buf)
             # Flush any trailing partial sentence.
             tail = buf.strip()
             if tail:
@@ -254,6 +275,7 @@ class ClaudeRefiner(Refiner):
     """Anthropic API. Bring-your-own key via ANTHROPIC_API_KEY. Metered/cloud."""
 
     name = "claude"
+    is_cloud = True
 
     def __init__(self, model: str, auto_capitalize: bool = True):
         super().__init__(auto_capitalize)
@@ -289,6 +311,7 @@ class OpenAIRefiner(Refiner):
     """OpenAI API. Bring-your-own key via OPENAI_API_KEY. Metered/cloud."""
 
     name = "openai"
+    is_cloud = True
 
     def __init__(self, model: str, auto_capitalize: bool = True):
         super().__init__(auto_capitalize)
