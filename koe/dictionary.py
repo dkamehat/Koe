@@ -24,7 +24,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from .paths import data_dir
+
+PROJECT_ROOT = data_dir()
 DEFAULT_DICT_PATH = PROJECT_ROOT / "dictionary.txt"
 
 _TEMPLATE = """\

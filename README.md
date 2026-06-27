@@ -30,6 +30,17 @@ machine** — nothing is ever sent to the cloud.
 
 ## Install
 
+### Option A — download the app (no Python, no git)
+
+1. Grab **`Koe-win64-cuda.zip`** from the [latest release](https://github.com/dkamehat/Koe/releases/latest).
+2. Unzip it anywhere.
+3. Double-click **`Koe.exe`**. The first launch downloads the Whisper model once, then runs offline.
+
+`config.json` and `dictionary.txt` are created next to `Koe.exe`, so the app stays
+self-contained and portable.
+
+### Option B — run from source (for developers)
+
 ```powershell
 git clone https://github.com/dkamehat/Koe.git
 cd Koe
@@ -38,6 +49,8 @@ cd Koe
 
 `setup.ps1` creates a `.venv` and installs everything (including the CUDA libraries).
 Downloads ~1–2 GB.
+
+To build the standalone app yourself: `.\build.ps1` → `dist\Koe\Koe.exe`.
 
 *(Optional but recommended)* enable the local LLM cleanup:
 

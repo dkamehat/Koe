@@ -11,7 +11,9 @@ import os
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from .paths import data_dir
+
+PROJECT_ROOT = data_dir()
 CONFIG_PATH = PROJECT_ROOT / "config.json"
 
 

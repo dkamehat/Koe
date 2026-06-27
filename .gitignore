@@ -5,6 +5,12 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
+# --- PyInstaller build output ---
+build/
+dist/
+*.zip
+build_log.txt
+
 # --- Koe user data & runtime state (machine-specific / private) ---
 # config.json: generated on first run; personal settings
 config.json

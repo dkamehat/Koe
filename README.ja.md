@@ -25,6 +25,16 @@
 
 ## インストール
 
+### 方法A — アプリをダウンロード（Python も git も不要）
+
+1. [最新リリース](https://github.com/dkamehat/Koe/releases/latest)から **`Koe-win64-cuda.zip`** を入手。
+2. 好きな場所に解凍。
+3. **`Koe.exe`** をダブルクリック。初回だけWhisperモデルをDLし、以降はオフライン動作。
+
+`config.json` と `dictionary.txt` は `Koe.exe` の隣に作られるので、フォルダごと持ち運べます。
+
+### 方法B — ソースから実行（開発者向け）
+
 ```powershell
 git clone https://github.com/dkamehat/Koe.git
 cd Koe
@@ -32,6 +42,8 @@ cd Koe
 ```
 
 `setup.ps1` が `.venv` を作り、CUDAライブラリ含め全依存を入れます（約1〜2GB）。
+
+自分でアプリをビルドするなら：`.\build.ps1` → `dist\Koe\Koe.exe`。
 
 *(任意・推奨)* ローカルLLM整形を有効化：
 
