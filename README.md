@@ -155,6 +155,10 @@ Koe drafts a reply you can say back — in the call's language plus a gloss in y
 `--role "..."` sets a persona and `--context <file>` pre-loads briefing material (your
 resume, the job description, the agenda) so replies are grounded in it. Stop with Ctrl+C.
 
+For the cleanest translation, run the interpreter on a stronger local model with
+`--ollama-model qwen2.5:14b` (dictation stays on the lighter model). On the 7B model
+the odd Chinese character can slip into Japanese output; the 14B model removes it.
+
 ## How it works
 
 ```
