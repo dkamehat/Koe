@@ -200,13 +200,36 @@ class _SuggestHelper:
         return out
 
 
+class _SuggestWorker(threading.Thread):
+    """Generates reply suggestions OFF the transcribe path so captions never stall
+    on the LLM, and serializes F9 + auto requests (one ollama call at a time).
+    Queue items are (transcript_snapshot, manual) or None to stop."""
+
+    def __init__(self, helper: "_SuggestHelper", q: "queue.Queue"):
+        super().__init__(daemon=True)
+        self._helper = helper
+        self._q = q
+
+    def run(self) -> None:
+        while True:
+            req = self._q.get()
+            if req is None:
+                break
+            convo, manual = req
+            lines = self._helper.lines(convo)
+            if lines:
+                print("\n" + "\n".join(lines) + "\n", flush=True)
+            elif manual:
+                print("  (no suggestion)\n", flush=True)
+
+
 class _Transcriber(threading.Thread):
     """Consumer: pull whole utterances and caption them, off the capture path so
     the GPU never stalls audio. One thread => captions stay in spoken order."""
 
     def __init__(self, engine, task: str, seg_q: "queue.Queue", t0: float,
                  translator=None, debug: bool = False, transcript: "deque | None" = None,
-                 helper: "_SuggestHelper | None" = None, auto_suggest: bool = False):
+                 suggest_q: "queue.Queue | None" = None, auto_suggest: bool = False):
         super().__init__(daemon=True)
         self._engine = engine
         self._task = task
@@ -215,7 +238,7 @@ class _Transcriber(threading.Thread):
         self._translator = translator
         self._debug = debug
         self._transcript = transcript
-        self._helper = helper
+        self._suggest_q = suggest_q
         self._auto = auto_suggest
 
     def run(self) -> None:
@@ -238,11 +261,12 @@ class _Transcriber(threading.Thread):
             if self._translator is not None:
                 # Source printed immediately above; translation follows when ready.
                 print(f"          ↳ {self._translator.translate(text)}", flush=True)
-            # Auto-suggest: when the other party asks something, line up a reply
-            # right under the caption. (Reading own-thread transcript -> no race.)
-            if self._auto and self._helper is not None and _is_question(text):
-                for ln in self._helper.lines(list(self._transcript)):
-                    print(ln, flush=True)
+            # Auto-suggest: when the other party asks something, hand a reply
+            # request to the worker (never block captions). Coalesce bursts: only
+            # enqueue when the worker is idle so questions don't pile up.
+            if (self._auto and self._suggest_q is not None and _is_question(text)
+                    and self._suggest_q.empty()):
+                self._suggest_q.put((list(self._transcript), False))
 
 
 def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
@@ -330,6 +354,15 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     print(f"\nKoe Interpreter — capturing: {dev['name']}\n"
           f"mode={mode}  threshold={threshold}  (Ctrl+C to stop)\n", flush=True)
 
+    # Suggestion worker: all reply generation (F9 + auto) runs here, off the
+    # transcribe path and serialized so captions never stall on the LLM.
+    suggest_q: "queue.Queue | None" = None
+    worker = None
+    if helper is not None:
+        suggest_q = queue.Queue()
+        worker = _SuggestWorker(helper, suggest_q)
+        worker.start()
+
     # Register the F9 hotkey (global, so it works while the call is focused).
     hotkey_on = False
     if helper is not None:
@@ -344,8 +377,7 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
                 print("\n  (no speech captured yet)\n", flush=True)
                 return
             print("\n  ... thinking of a reply ...", flush=True)
-            lines = helper.lines(convo)
-            print(("\n".join(lines) if lines else "  (no suggestion)") + "\n", flush=True)
+            suggest_q.put((convo, True))
 
         try:
             import keyboard
@@ -369,7 +401,7 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     cap = _Capture(dev, raw_q)
     t0 = time.time()
     tr = _Transcriber(engine, task, seg_q, t0, translator, debug, transcript,
-                      helper, auto_suggest)
+                      suggest_q, auto_suggest)
     cap.start()
     tr.start()
 
@@ -412,6 +444,9 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
         cap.stop()
         seg_q.put(None)
         tr.join(timeout=2.0)
+        if worker is not None:
+            suggest_q.put(None)
+            worker.join(timeout=2.0)
         if hotkey_on:
             try:
                 import keyboard
