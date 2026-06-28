@@ -20,6 +20,7 @@ Usage:
     python interpreter.py --suggest        # press F9 for a suggested reply (the apex)
     python interpreter.py --auto-suggest   # auto-line up a reply under each question
     python interpreter.py --suggest-key f8 # use a different hotkey
+    python interpreter.py --to ja --ollama-model qwen2.5:14b  # stronger LLM for translation
     python interpreter.py --debug          # RMS meter + per-caption (+latency) readout
 
 `--to <lang>` transcribes verbatim, then translates each caption with the local
@@ -158,8 +159,19 @@ def _is_hallucination(text: str, audio: np.ndarray) -> bool:
 
 
 def _is_question(text: str) -> bool:
-    """A natural 'your turn to reply' cue for --auto-suggest."""
-    return text.rstrip().endswith(("?", "？"))
+    """A natural 'your turn to reply' cue for --auto-suggest. Fires when the
+    utterance contains a question mark anywhere (in live speech the '?' often
+    isn't the last character of a segment)."""
+    return "?" in text or "？" in text
+
+
+def _installed_models(url: str) -> set:
+    from koe.refiner import _ollama_session
+    try:
+        r = _ollama_session.get(url.rstrip("/") + "/api/tags", timeout=3)
+        return {m["name"] for m in r.json().get("models", [])}
+    except Exception:
+        return set()
 
 
 class _SuggestHelper:
@@ -237,7 +249,7 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
             to: str | None, max_seg_s: float, suggest: bool = False,
             suggest_key: str = "f9", reply_lang: str | None = None,
             role: str | None = None, context: str | None = None,
-            auto_suggest: bool = False) -> None:
+            auto_suggest: bool = False, ollama_model: str | None = None) -> None:
     try:
         import pyaudiowpatch  # noqa: F401
     except ImportError:
@@ -251,6 +263,24 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     from koe.engine import TranscriptionEngine
 
     cfg = Config.load()
+    # The interpreter's LLM (translation + suggestion) can differ from the dictation
+    # refiner's: keep dictation fast on 7b, run the interpreter on a stronger model
+    # (e.g. qwen2.5:14b) for cleaner translation. --ollama-model overrides; default
+    # = the configured model.
+    llm = ollama_model or cfg.ollama_model
+    # If the chosen LLM isn't pulled, say so loudly and fall back (else translation
+    # silently errors out and echoes the source text).
+    if (to or suggest or auto_suggest):
+        installed = _installed_models(cfg.ollama_url)
+        if installed and llm not in installed:
+            if cfg.ollama_model in installed:
+                print(f"! ollama model {llm!r} not installed — using {cfg.ollama_model!r} "
+                      f"instead.  Get it with:  ollama pull {llm}",
+                      file=sys.stderr, flush=True)
+                llm = cfg.ollama_model
+            else:
+                print(f"! ollama model {llm!r} not installed.  ollama pull {llm}",
+                      file=sys.stderr, flush=True)
     p = pa.PyAudio()
     try:
         dev = _pick_loopback(p, device)
@@ -263,7 +293,7 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
         from koe.refiner import _ollama_available
         from koe.translator import OllamaTranslator, language_name
         if _ollama_available(cfg.ollama_url):
-            translator = OllamaTranslator(cfg.ollama_model, cfg.ollama_url, to)
+            translator = OllamaTranslator(llm, cfg.ollama_url, to)
         else:
             print(f"! ollama not running at {cfg.ollama_url} — captions will be "
                   f"source-only (start ollama to translate to {language_name(to)}).",
@@ -280,8 +310,8 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
         if _ollama_available(cfg.ollama_url):
             from koe.responder import ReplySuggester
             from koe.translator import OllamaTranslator
-            suggester = ReplySuggester(cfg.ollama_model, cfg.ollama_url, role, context)
-            gloss = OllamaTranslator(cfg.ollama_model, cfg.ollama_url, to or "ja")
+            suggester = ReplySuggester(llm, cfg.ollama_url, role, context)
+            gloss = OllamaTranslator(llm, cfg.ollama_url, to or "ja")
             helper = _SuggestHelper(suggester, gloss, reply_lang, to or "ja")
         else:
             print("! ollama not running — reply suggestions disabled.",
@@ -292,7 +322,7 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     engine = TranscriptionEngine(model=cfg.model, device=cfg.device,
                                  compute_type=cfg.compute_type, language=cfg.language)
     if translator is not None:
-        mode = f"transcribe -> translate to {translator.lang} ({cfg.ollama_model})"
+        mode = f"transcribe -> translate to {translator.lang} ({llm})"
     elif task == "translate":
         mode = "translate->EN (Whisper)"
     else:
@@ -429,8 +459,9 @@ def main() -> None:
             print(f"loaded context: {cpath} ({len(context)} chars){note}", flush=True)
         except Exception as exc:
             print(f"! could not read --context {cpath!r}: {exc}", file=sys.stderr, flush=True)
+    ollama_model = _val("--ollama-model")   # override the LLM for translate/suggest
     cmd_run(device, task, threshold, debug, to, max_seg,
-            suggest, suggest_key, reply_lang, role, context, auto_suggest)
+            suggest, suggest_key, reply_lang, role, context, auto_suggest, ollama_model)
 
 
 if __name__ == "__main__":

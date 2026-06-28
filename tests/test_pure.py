@@ -133,6 +133,15 @@ def test_language_name_known_and_passthrough():
     assert language_name("ja") == "Japanese"
     assert language_name("xx") == "xx"   # unknown code passes through unchanged
 
+def test_leaked_chinese_only_flags_nontarget():
+    from koe.translator import leaked_nontarget_chinese
+    # 贡 is simplified-Chinese-only (JP uses 貢) -> a leak into a Japanese target
+    assert leaked_nontarget_chinese("ja", "私は更多贡献します") is True
+    # Correct Japanese (貢献) must NOT be flagged
+    assert leaked_nontarget_chinese("ja", "私は貢献します") is False
+    # When the target IS Chinese, it's expected, not a leak (future --to zh)
+    assert leaked_nontarget_chinese("zh", "我会贡献") is False
+
 
 # --- reply suggestion prompt (responder) ------------------------------------
 

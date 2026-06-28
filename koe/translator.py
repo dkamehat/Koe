@@ -22,6 +22,25 @@ def language_name(code: str) -> str:
     return LANGS.get(code.lower(), code)
 
 
+# High-frequency *simplified-Chinese* characters whose Japanese counterparts are a
+# different glyph, so they never appear in correct Japanese — a precise signal that
+# the model leaked Chinese into a non-Chinese target (e.g. 贡 vs JP 貢, 样 vs 様,
+# 决 vs 決). Deliberately excludes shinjitai shared with Japanese (国学会体区医点数)
+# to avoid false positives. Best-effort net; the real fix for leaks is a better model.
+_SIMPLIFIED = set(
+    "这你个们时说别贡专适对么进过还现实关标题问让边应单习书东语觉师证样决间长门风"
+    "饭错银铁钟规护办击华协历县价见观务动变图难类认识试营销团队员报际网"
+)
+
+
+def leaked_nontarget_chinese(target: str, text: str) -> bool:
+    """True if Chinese leaked into a target that is NOT Chinese (zh*). Lets us keep
+    Chinese OUT of e.g. a Japanese caption now, while still allowing --to zh later."""
+    if target.lower().startswith("zh"):
+        return False
+    return any(c in _SIMPLIFIED for c in text)
+
+
 def already_in_target(target: str, text: str) -> bool:
     """Skip translation when the text is already in the target language — a cheap
     script check that avoids a needless LLM call and 'translating' same-language."""
@@ -59,10 +78,7 @@ class OllamaTranslator:
         self.target = target.lower()
         self.lang = language_name(self.target)
 
-    def translate(self, text: str) -> str:
-        text = text.strip()
-        if not text or already_in_target(self.target, text):
-            return text
+    def _chat(self, system: str, text: str) -> str:
         try:
             resp = _ollama_session.post(
                 f"{self.url}/api/chat",
@@ -75,14 +91,28 @@ class OllamaTranslator:
                     },
                     "keep_alive": "10m",
                     "messages": [
-                        {"role": "system", "content": _system_prompt(self.lang)},
+                        {"role": "system", "content": system},
                         {"role": "user", "content": text},
                     ],
                 },
                 timeout=60,
             )
             resp.raise_for_status()
-            out = (resp.json()["message"]["content"] or "").strip()
-            return out or text
+            return (resp.json()["message"]["content"] or "").strip()
         except Exception:
-            return text  # never break captions — show the source
+            return ""
+
+    def translate(self, text: str) -> str:
+        text = text.strip()
+        if not text or already_in_target(self.target, text):
+            return text
+        out = self._chat(_system_prompt(self.lang), text)
+        # If Chinese leaked into a non-Chinese target, retry once, harder.
+        if out and leaked_nontarget_chinese(self.target, out):
+            hard = _system_prompt(self.lang) + (
+                f" CRITICAL: output ZERO Chinese characters. Write strictly in {self.lang}."
+            )
+            retry = self._chat(hard, text)
+            if retry:
+                out = retry
+        return out or text  # never break captions — show the source on failure

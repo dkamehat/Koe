@@ -114,6 +114,7 @@ python interpreter.py --list     # キャプチャ可能なスピーカー一覧
 python interpreter.py --to ja     # 字幕を日本語へ翻訳（en/zh/ko/… も可・ローカルollama）
 python interpreter.py --to ja --suggest  # F9 で「返すべき返事」を提案（＋日本語訳）
 python interpreter.py --to ja --auto-suggest  # 質問を検知したら返信案を自動で下に表示
+python interpreter.py --to ja --ollama-model qwen2.5:14b  # 翻訳を強いモデルで（要 ollama pull）
 python interpreter.py --translate # Whisper内蔵の高速翻訳 → 英語のみ
 python interpreter.py --debug    # RMSメーターで --threshold を調整
 ```

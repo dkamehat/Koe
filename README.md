@@ -141,6 +141,7 @@ python interpreter.py --list     # list capturable speakers
 python interpreter.py --to ja     # translate captions to Japanese (or en/zh/ko/...) via local ollama
 python interpreter.py --to ja --suggest  # press F9 for a reply you can say back (+ JA gloss)
 python interpreter.py --to ja --auto-suggest  # auto-line up a reply under each question
+python interpreter.py --to ja --ollama-model qwen2.5:14b  # stronger LLM for cleaner translation
 python interpreter.py --translate # fast EN-only via Whisper's own translation
 python interpreter.py --debug    # live RMS meter to tune --threshold
 ```
