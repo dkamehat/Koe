@@ -103,11 +103,50 @@ history stays meaningful.
 CER by **nothing** here — it adds latency without improving recognition — so its
 value lies in punctuation/formatting on messier, longer speech, which this small
 clean set does not exercise. Decision: **keep `large-v3-turbo`**; the rules-vs-ollama
-default is still open and needs longer/spontaneous samples to judge fairly.
+default is left open here and resolved in v1 below with spontaneous samples.
+
+### v1 — 2026-06-28 (③ refiner decision)
+
+- **koe commit:** `f7afbb7` (+ this change: personal ③ default → rules)
+- **dataset:** personal, 9 samples (added 5 spontaneous/messy: fillers, run-ons,
+  false starts, code-switching)
+- **hardware:** RTX 3080 Ti Laptop, CUDA / float16
+
+| model            | refiner | raw CER | final CER | STT (s) | ③ (s) |
+|------------------|---------|--------:|----------:|--------:|------:|
+| large-v3-turbo   | rules   |    5.4% |      5.4% |     0.5 |   0.0 |
+| large-v3-turbo   | ollama  |    5.4% |      7.1% |     0.5 |   0.7 |
+
+**Decision: ③ default = `rules`.** `rules` never alters Japanese content, so
+`final ≡ raw` (5.4%) at zero added latency. `ollama` is **net-negative** (7.1%):
+it degraded 3/9 samples by paraphrasing *against* its instruction — altering verb
+endings (`思っていて`→`思っています`), dropping content particles as if filler
+(`なんですよね`→`なんですね`), and hallucinating Chinese on code-switching
+(`close`→`クローン`→`克隆`). The intended ③ value (filler removal, punctuation)
+rarely triggers because Whisper already handles it on this voice. `ollama` stays
+selectable but is no longer the default. (Shipped default in `config.py` is left at
+`auto` — this conclusion rests on one speaker's 9 JP samples and shouldn't be
+generalized to all users without a public-dataset run; see Tier 2.)
+
+**Known STT gap (#07):** embedded English tech terms spoken inside a Japanese
+sentence are mis-transcribed by Whisper itself (`issue`→`意思`, `close`→`クローン`),
+giving CER 45.6% on that sample. Not fixable by ③ (ollama made it worse). Tracked
+under Roadmap.
 
 ---
 
 ## Roadmap
+
+### ② Code-switching: English tech terms in Japanese speech (TODO)
+
+Whisper mis-hears English words embedded in a Japanese sentence
+(`issue`→`意思`, `close`→`クローン`, `pull request`→`プルリクエスト`) — the worst
+sample in v1 at 45.6% CER. This is a ② (transcription) gap, not fixable by ③
+(ollama worsened it, even hallucinating Chinese). The dictionary is risky here
+(`意思` is a real word, so a blind `意思`→`issue` mapping would corrupt genuine
+usage). Directions to try: bias `initial_prompt` toward the user's English tech
+vocabulary, a code-switch-aware decode, or context-guarded post-hoc term mapping.
+Matters specifically for developer/PjM dictation.
 
 ### Tier 2 — public-dataset, reproducible-by-anyone benchmark (TODO)
 
