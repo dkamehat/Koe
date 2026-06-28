@@ -8,7 +8,9 @@ On any error it returns the source text, so captions never break.
 
 from __future__ import annotations
 
-from .refiner import _has_cjk, _ollama_session
+import requests
+
+from .refiner import _has_cjk
 
 # Friendly names for the prompt; unknown codes pass through verbatim, so new
 # targets work without code changes (toward the multilingual North Star).
@@ -77,10 +79,14 @@ class OllamaTranslator:
         self.url = url.rstrip("/")
         self.target = target.lower()
         self.lang = language_name(self.target)
+        # Own session (not the refiner's shared one) so the transcribe thread and
+        # the suggestion worker never touch the same Session concurrently.
+        self._session = requests.Session()
+        self._session.trust_env = False
 
     def _chat(self, system: str, text: str) -> str:
         try:
-            resp = _ollama_session.post(
+            resp = self._session.post(
                 f"{self.url}/api/chat",
                 json={
                     "model": self.model,

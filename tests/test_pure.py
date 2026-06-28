@@ -133,6 +133,26 @@ def test_language_name_known_and_passthrough():
     assert language_name("ja") == "Japanese"
     assert language_name("xx") == "xx"   # unknown code passes through unchanged
 
+def test_interpreter_is_question():
+    from interpreter import _is_question
+    assert _is_question("what motivates you?") is True
+    assert _is_question("これでいいですか？") is True
+    assert _is_question("the question is what to do") is False
+
+def test_interpreter_to_16k_mono_downmix_and_resample():
+    import numpy as np
+    from interpreter import _to_16k_mono
+    # 0.1 s of 48 kHz stereo: L=1000, R=3000 -> mono 2000; resamples to ~1600 @16k
+    frames = 4800
+    stereo = np.zeros((frames, 2), dtype=np.int16)
+    stereo[:, 0] = 1000
+    stereo[:, 1] = 3000
+    out = _to_16k_mono(stereo.tobytes(), 48000, 2)
+    assert out.dtype == np.float32
+    assert abs(len(out) - 1600) <= 1                       # 4800 * 16000/48000
+    assert abs(float(out.mean()) - (2000 / 32768)) < 1e-3  # channel-averaged level
+
+
 def test_leaked_chinese_only_flags_nontarget():
     from koe.translator import leaked_nontarget_chinese
     # 贡 is simplified-Chinese-only (JP uses 貢) -> a leak into a Japanese target

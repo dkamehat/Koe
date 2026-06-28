@@ -8,7 +8,8 @@ server. Returns "" on any error so the caller can simply skip the suggestion.
 
 from __future__ import annotations
 
-from .refiner import _ollama_session
+import requests
+
 from .translator import language_name
 
 
@@ -38,13 +39,16 @@ class ReplySuggester:
         self.url = url.rstrip("/")
         self.role = role
         self.context = context
+        # Own session, thread-confined to the suggestion worker.
+        self._session = requests.Session()
+        self._session.trust_env = False
 
     def suggest(self, transcript: list[str], reply_lang: str) -> str:
         if not transcript:
             return ""
         convo = "\n".join(transcript[-8:])
         try:
-            resp = _ollama_session.post(
+            resp = self._session.post(
                 f"{self.url}/api/chat",
                 json={
                     "model": self.model,
