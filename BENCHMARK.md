@@ -192,21 +192,46 @@ needs sentence-level context, not yet handled. Open future direction if it
 recurs: context-guarded term mapping (use the focused-window context already
 captured by `enable_context`) to disambiguate `クローン`=clone vs close.
 
-### Tier 2 — public-dataset, reproducible-by-anyone benchmark (TODO)
+### Tier 2 — comparability via citation (decided; full harness deferred)
 
-The current bench uses *your* voice (private, not reproducible by others). To get a
-**citable, comparable** number — and a basis for comparing Koe against other STT
-tools without re-running them — add an optional public-dataset mode:
+**Decision:** we do **not** build a multi-dataset public-run harness. Two reasons,
+both structural rather than effort:
 
-- Add a `bench dataset` command that downloads a small **public Japanese corpus**
-  on demand and scores it with the same metric/normalization above. Candidates:
-  **Common Voice ja** (CC0), **JSUT**, or a **TEDxJP-10K** subset.
-- Publish the resulting table here (audio stays on the dataset host; only numbers
-  are committed) — fully shareable since it isn't personal voice.
-- For cross-tool comparison, **cite other systems' published numbers on the same
-  public dataset** rather than installing and running competitors (a full
-  multi-tool leaderboard is deliberately out of scope: high maintenance, cloud
-  cost, and data-egress that conflicts with Koe's local-first thesis).
+1. **A public run of Koe mostly measures Whisper, not Koe.** Koe is
+   `large-v3-turbo + rules + dictionary`. The dictionary — Koe's main accuracy
+   lever — is tuned to the user's voice/domain and is **inert on generic public
+   audio** (the `dict=off` row above: 9.7% vs 1.3% is exactly that lever). So a
+   public number would re-measure the base model, whose Japanese CER is already
+   published by others.
+2. **Cross-tool numbers aren't directly comparable.** Published CERs differ by
+   normalization, dataset version (CommonVoice 8 vs 17), and reference
+   conventions; we can't re-normalize other systems' pipelines to match ours.
 
-Keep both benchmarks: the **personal** one tunes Koe for your voice/domain; the
-**public** one provides comparability.
+Instead we state the base model honestly and **cite** its published Japanese CER.
+
+**Underlying model — published Japanese CER (lower = better):**
+
+| model (base of Koe)         | CommonVoice 8 (ja) | JSUT basic5000 | ReazonSpeech (held-out) |
+|-----------------------------|-------------------:|---------------:|------------------------:|
+| OpenAI `whisper-large-v3`   |               8.5% |           7.1% |                   14.9% |
+
+Source: the kotoba-whisper-v2.0 model card's evaluation table (OpenAI
+`whisper-large-v3` row).[^kotoba] Koe ships **`large-v3-turbo`**, which keeps the
+large-v3 encoder and distills the decoder (32→4 layers): ~6× faster, accuracy
+close to large-v3 (and on par with large-v2).[^turbo] Treat the table as the
+single-digit-CER ballpark Koe inherits on clean public Japanese; turbo is
+marginally higher.
+
+**These are not our numbers and not directly comparable to the personal-bench CER
+above** (different audio, different normalization). They establish the floor Koe
+stands on. **Koe's own contribution sits on top of it** and is what the personal
+bench measures: clean dictation already 0%, and code-switching driven from 45.6%
+→ 8.8% via the dictionary (v2) — neither of which a generic public set exercises.
+
+**If a Koe-specific public claim is ever needed** (e.g. to quantify the dictionary
+on a shared set), the minimal add is a `bench dataset` command scoring a small
+**Common Voice ja** (CC0) subset with the same metric/normalization. Kept out of
+scope for now: marginal signal, data-egress vs the local-first thesis, and upkeep.
+
+[^kotoba]: kotoba-tech/kotoba-whisper-v2.0 model card — <https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0>
+[^turbo]: Whisper large-v3-turbo (4-layer distilled decoder, ~6× faster, ≈large-v2 accuracy) — <https://github.com/openai/whisper/discussions/2363>

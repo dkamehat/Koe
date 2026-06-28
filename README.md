@@ -127,6 +127,8 @@ python bench.py run --model large-v3 --refiner rules    # quick A/B without edit
 ```
 
 Samples live in `./bench/` and are gitignored — your voice never leaves the machine.
+See **[BENCHMARK.md](BENCHMARK.md)** for the metric (normalized CER), versioned
+results, and how Koe relates to the underlying model's published Japanese CER.
 
 ## How it works
 

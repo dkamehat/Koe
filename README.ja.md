@@ -100,6 +100,8 @@ python bench.py run --model large-v3 --refiner rules   # config を触らず即A
 ```
 
 サンプルは `./bench/` に保存（gitignore済）＝あなたの声は端末外に出ません。
+指標（正規化CER）・バージョン別結果・土台モデルの公開日本語CERとの関係は
+**[BENCHMARK.md](BENCHMARK.md)** を参照。
 
 ## 仕組み
 
