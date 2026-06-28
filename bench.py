@@ -11,6 +11,7 @@ Usage:
     python bench.py run                                     # score all samples with current config
     python bench.py run --diff                              # also show char-level diffs (ref vs final)
     python bench.py run --model large-v3 --refiner rules    # quick A/B without editing config.json
+    python bench.py run --no-dict                           # isolate the terminology dictionary's effect
     python bench.py sweep --models small,large-v3-turbo,large-v3 --refiners rules,ollama
                                                             # compare a matrix in one shot
     python bench.py history                                 # past results, newest first
@@ -257,6 +258,9 @@ def cmd_run(argv: list[str]) -> None:
     if (r := _flag(argv, "--refiner")):
         cfg.refiner_backend = r
     show_diff = "--diff" in argv
+    # --no-dict isolates the terminology dictionary's contribution (initial_prompt
+    # bias + post-hoc corrections), so the code-switch fix can be A/B measured.
+    use_dict = "--no-dict" not in argv
 
     samples = _samples()
     if not samples:
@@ -264,12 +268,14 @@ def cmd_run(argv: list[str]) -> None:
         return
 
     d = Dictionary()
+    prompt = d.initial_prompt() if use_dict else None
+    terms = list(d.terms) if use_dict else []
     t_load = time.time()
     eng = TranscriptionEngine(model=cfg.model, device=cfg.device,
                               compute_type=cfg.compute_type, language=cfg.language)
     r = build_refiner(cfg)
     _maybe_warn_refiner(cfg, r)
-    print(f"model={cfg.model}  refiner={r.name}  "
+    print(f"model={cfg.model}  refiner={r.name}  dict={'on' if use_dict else 'OFF'}  "
           f"({len(samples)} samples, load {time.time()-t_load:.1f}s)\n")
 
     raw_tot = fin_tot = stt_tot = ref_tot = 0.0
@@ -277,10 +283,14 @@ def cmd_run(argv: list[str]) -> None:
         ref = _ref_text(wav)
         audio = _read_wav(wav)
         t0 = time.time()
-        raw = d.apply(eng.transcribe(audio, initial_prompt=d.initial_prompt()))
+        raw = eng.transcribe(audio, initial_prompt=prompt)
+        if use_dict:
+            raw = d.apply(raw)
         t_stt = time.time() - t0
         t1 = time.time()
-        final = d.apply(r.refine(raw, list(d.terms)))
+        final = r.refine(raw, terms)
+        if use_dict:
+            final = d.apply(final)
         t_ref = time.time() - t1
         c_raw, c_fin = cer(ref, raw), cer(ref, final)
         raw_tot += c_raw
@@ -301,6 +311,7 @@ def cmd_run(argv: list[str]) -> None:
           f"| mean latency: STT {stt_tot/n:.1f}s / ③ {ref_tot/n:.1f}s ===")
     print("(lower is better; compare across model/refiner changes)")
     _log_result({"cmd": "run", "model": cfg.model, "refiner": r.name, "n": n,
+                 "dict": use_dict,
                  "cer_raw": round(raw_tot / n, 4), "cer_final": round(fin_tot / n, 4),
                  "stt_s": round(stt_tot / n, 2), "ref_s": round(ref_tot / n, 2)})
 
@@ -321,6 +332,7 @@ def cmd_sweep(argv: list[str]) -> None:
     refiners = (_flag(argv, "--refiners") or cfg.refiner_backend).split(",")
     models = [m.strip() for m in models if m.strip()]
     refiners = [x.strip() for x in refiners if x.strip()]
+    use_dict = "--no-dict" not in argv
 
     samples = _samples()
     if not samples:
@@ -328,9 +340,12 @@ def cmd_sweep(argv: list[str]) -> None:
         return
 
     d = Dictionary()
+    prompt = d.initial_prompt() if use_dict else None
+    terms = list(d.terms) if use_dict else []
     refs = {w.stem: _ref_text(w) for w in samples}
     audios = {w.stem: _read_wav(w) for w in samples}
-    print(f"sweep: models={models} x refiners={refiners}  ({len(samples)} samples)\n")
+    print(f"sweep: models={models} x refiners={refiners}  dict={'on' if use_dict else 'OFF'}  "
+          f"({len(samples)} samples)\n")
 
     rows: list[dict] = []
     for model in models:
@@ -346,8 +361,8 @@ def cmd_sweep(argv: list[str]) -> None:
         stt_sum = 0.0
         for w in samples:
             t0 = time.time()
-            raw_cache[w.stem] = d.apply(eng.transcribe(audios[w.stem],
-                                                        initial_prompt=d.initial_prompt()))
+            raw = eng.transcribe(audios[w.stem], initial_prompt=prompt)
+            raw_cache[w.stem] = d.apply(raw) if use_dict else raw
             stt_sum += time.time() - t0
         raw_cer = sum(cer(refs[s], raw_cache[s]) for s in raw_cache) / len(samples)
         print(f"  {model}: raw CER={raw_cer:.1%}  "
@@ -360,7 +375,9 @@ def cmd_sweep(argv: list[str]) -> None:
             fin_sum = ref_sum = 0.0
             for s, raw in raw_cache.items():
                 t1 = time.time()
-                final = d.apply(r.refine(raw, list(d.terms)))
+                final = r.refine(raw, terms)
+                if use_dict:
+                    final = d.apply(final)
                 ref_sum += time.time() - t1
                 fin_sum += cer(refs[s], final)
             rows.append({
@@ -385,7 +402,8 @@ def cmd_sweep(argv: list[str]) -> None:
           f"({best['cer_final']:.1%})")
     for x in rows:
         _log_result({"cmd": "sweep", "model": x["model"], "refiner": x["refiner"],
-                     "n": len(samples), "cer_raw": round(x["cer_raw"], 4),
+                     "n": len(samples), "dict": use_dict,
+                     "cer_raw": round(x["cer_raw"], 4),
                      "cer_final": round(x["cer_final"], 4),
                      "stt_s": round(x["stt_s"], 2), "ref_s": round(x["ref_s"], 2)})
 

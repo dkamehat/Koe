@@ -130,23 +130,67 @@ generalized to all users without a public-dataset run; see Tier 2.)
 
 **Known STT gap (#07):** embedded English tech terms spoken inside a Japanese
 sentence are mis-transcribed by Whisper itself (`issue`→`意思`, `close`→`クローン`),
-giving CER 45.6% on that sample. Not fixable by ③ (ollama made it worse). Tracked
-under Roadmap.
+giving CER 45.6% on that sample. Not fixable by ③ (ollama made it worse). Addressed
+in v2 below.
+
+### v2 — 2026-06-28 (③=rules; code-switching #07 worked via the dictionary)
+
+- **koe commit:** `7c1b216` (+ this change: bench `--no-dict` toggle; dictionary.py
+  comment. The fix itself is **dictionary entries**, which live in the gitignored
+  `dictionary.txt` and stay local — no model/engine code changed.)
+- **dataset:** personal, 9 samples (same as v1)
+- **hardware:** RTX 3080 Ti Laptop, CUDA / float16
+
+| model            | refiner | dict | raw CER | final CER | STT (s) | ③ (s) |
+|------------------|---------|------|--------:|----------:|--------:|------:|
+| large-v3-turbo   | rules   | on   |    1.3% |      1.3% |     0.5 |   0.0 |
+| large-v3-turbo   | rules   | off  |    9.7% |      9.7% |     0.5 |   0.0 |
+
+(The `dict=off` row is `bench run --no-dict`, added this version to isolate the
+terminology dictionary's contribution. It is the bias + correction the dictionary
+provides, *not* a model change.)
+
+**Code-switching (#07) result on the worst sample: 45.6% → 8.8%; overall mean
+5.4% → 1.3%.** Two mechanisms, both in the dictionary, no engine code:
+
+1. **Decode-time bias** (`initial_prompt`) — listing the English term (`issue`,
+   `Ollama`, `Whisper`) makes Whisper emit it in English instead of kana/kanji.
+   This is the *only* lever that can fix a homograph like `意思`→`issue`, because
+   it acts before the wrong characters are ever produced. A post-hoc rule can't
+   (it can't tell a mis-heard `意思` from a genuine one).
+2. **Safe post-hoc correction** for the unambiguous katakana the bias didn't
+   catch: `プルリクエスト`→`pull request`, `マージ`→`merge`.
+
+**What did NOT work (rejected, with data):** a code-switch *demo sentence* prefixed
+to `initial_prompt` ("…such terms are written in English…"). Whisper treats the
+prompt as prior transcript, not an instruction, so it ignored the directive,
+**failed** to fix the target (#07 stayed 45.6%) **and regressed** a previously-clean
+sample (#03 `Ollama`/`Whisper` → `オラマ`/`ウィスパー`, 0%→33.3%; mean 5.4%→9.7%).
+Reverted; `initial_prompt` is a plain term listing.
+
+**Residual hard limit:** `close`→`クローン`. The katakana `クローン` is the genuine
+word *clone* (`git clone`), so a blind `クローン`→`close` rule would corrupt real
+usage; `close`↔`clone` is a homograph the decoder mis-resolved acoustically and
+neither bias nor a safe rule can recover without sentence context. Left as-is —
+this is the 8.8% residual on #07.
 
 ---
 
 ## Roadmap
 
-### ② Code-switching: English tech terms in Japanese speech (TODO)
+### ② Code-switching: English tech terms in Japanese speech (largely resolved in v2)
 
 Whisper mis-hears English words embedded in a Japanese sentence
 (`issue`→`意思`, `close`→`クローン`, `pull request`→`プルリクエスト`) — the worst
-sample in v1 at 45.6% CER. This is a ② (transcription) gap, not fixable by ③
-(ollama worsened it, even hallucinating Chinese). The dictionary is risky here
-(`意思` is a real word, so a blind `意思`→`issue` mapping would corrupt genuine
-usage). Directions to try: bias `initial_prompt` toward the user's English tech
-vocabulary, a code-switch-aware decode, or context-guarded post-hoc term mapping.
-Matters specifically for developer/PjM dictation.
+sample in v1 at 45.6% CER. **v2 brought it to 8.8%** using the terminology
+dictionary only (see v2 above): decode-time `initial_prompt` bias for the
+homograph cases (`意思`→`issue`) + safe katakana corrections for the unambiguous
+ones. `ollama` (③) was the wrong tool — it worsened this, even hallucinating
+Chinese. A prefixed code-switch *demo sentence* was tried and rejected (regressed
+other samples). **Residual:** `close`↔`clone` (`クローン`) — a true homograph that
+needs sentence-level context, not yet handled. Open future direction if it
+recurs: context-guarded term mapping (use the focused-window context already
+captured by `enable_context`) to disambiguate `クローン`=clone vs close.
 
 ### Tier 2 — public-dataset, reproducible-by-anyone benchmark (TODO)
 

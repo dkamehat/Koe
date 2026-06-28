@@ -67,6 +67,12 @@ def test_dictionary_longer_rules_win(tmp_path):
     d = Dictionary(p)
     assert d.apply("えーびーしー") == "ABC"   # longest match applied first
 
+def test_initial_prompt_is_bare_listing(tmp_path):
+    p = tmp_path / "dict.txt"
+    p.write_text("ガードレール\nissue\npull request\n", encoding="utf-8")
+    d = Dictionary(p)
+    assert d.initial_prompt() == "用語: ガードレール、issue、pull request。"
+
 
 # --- refiner guards ---------------------------------------------------------
 

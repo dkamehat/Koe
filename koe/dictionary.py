@@ -85,6 +85,9 @@ class Dictionary:
         if not self.terms:
             return None
         # A natural-language frame transfers better than a bare comma list.
+        # NOTE: a code-switch demo-sentence prefix was tried (#07) to keep
+        # embedded English in English; bench showed it didn't fix the target
+        # sample and regressed others, so we keep the plain listing.
         return "用語: " + "、".join(self.terms[-60:]) + "。"
 
     # --- mechanism 2: deterministic correction ----------------------------
