@@ -129,6 +129,13 @@ def test_already_in_target_skips_same_language():
     assert already_in_target("en", "David is from the UK") is True
     assert already_in_target("en", "デイビッド") is False
 
+def test_already_in_target_chinese_source_not_skipped_for_ja():
+    # Chinese has CJK but no kana -> must NOT be treated as already-Japanese, so a
+    # Chinese source still gets translated to Japanese (multilingual correctness).
+    assert already_in_target("ja", "我会贡献给团队") is False
+    # Pure-kanji Japanese (no kana) also returns False -> harmless extra translate.
+    assert already_in_target("ja", "東京") is False
+
 def test_language_name_known_and_passthrough():
     assert language_name("ja") == "Japanese"
     assert language_name("xx") == "xx"   # unknown code passes through unchanged

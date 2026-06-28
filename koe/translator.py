@@ -43,13 +43,24 @@ def leaked_nontarget_chinese(target: str, text: str) -> bool:
     return any(c in _SIMPLIFIED for c in text)
 
 
+def _has_kana(s: str) -> bool:
+    """Hiragana/katakana — present in genuine Japanese, absent in Chinese. Lets us
+    tell a Japanese source from a Chinese one (both are CJK) for --to ja."""
+    return any(
+        "ぁ" <= c <= "ゟ"     # hiragana
+        or "゠" <= c <= "ヿ"  # katakana
+        or "ｦ" <= c <= "ﾟ"  # half-width katakana
+        for c in s
+    )
+
+
 def already_in_target(target: str, text: str) -> bool:
     """Skip translation when the text is already in the target language — a cheap
     script check that avoids a needless LLM call and 'translating' same-language."""
     t = target.lower()
     if t == "ja":
-        return _has_cjk(text)
-    if t in ("en", "es", "fr", "de"):
+        return _has_kana(text)   # kana => genuinely Japanese (Chinese has none)
+    if t in ("en", "es", "fr", "de", "it", "pt"):
         return (not _has_cjk(text)) and any(c.isascii() and c.isalpha() for c in text)
     return False
 
