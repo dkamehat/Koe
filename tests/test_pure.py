@@ -132,3 +132,20 @@ def test_already_in_target_skips_same_language():
 def test_language_name_known_and_passthrough():
     assert language_name("ja") == "Japanese"
     assert language_name("xx") == "xx"   # unknown code passes through unchanged
+
+
+# --- reply suggestion prompt (responder) ------------------------------------
+
+def test_responder_prompt_includes_role_and_context():
+    from koe.responder import _system_prompt
+    p = _system_prompt("English", "PM interview, be concise", "RESUME: built Koe")
+    assert "English" in p
+    assert "PM interview, be concise" in p
+    assert "built Koe" in p          # background material is grounded in the prompt
+
+def test_responder_prompt_minimal_has_no_dangling_sections():
+    from koe.responder import _system_prompt
+    p = _system_prompt("Japanese", None, None)
+    assert "Japanese" in p
+    assert "BACKGROUND" not in p     # no empty background block when no context
+    assert "context/goal" not in p   # no empty role line when no role

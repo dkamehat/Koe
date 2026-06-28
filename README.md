@@ -139,6 +139,8 @@ video, a call — using the same local engine. Nothing leaves the machine.
 python interpreter.py            # live captions of the default speaker (WASAPI loopback)
 python interpreter.py --list     # list capturable speakers
 python interpreter.py --to ja     # translate captions to Japanese (or en/zh/ko/...) via local ollama
+python interpreter.py --to ja --suggest  # press F9 for a reply you can say back (+ JA gloss)
+python interpreter.py --to ja --auto-suggest  # auto-line up a reply under each question
 python interpreter.py --translate # fast EN-only via Whisper's own translation
 python interpreter.py --debug    # live RMS meter to tune --threshold
 ```
@@ -147,7 +149,10 @@ Audio is split into utterances at short silence gaps and transcribed per-utteran
 (faster-whisper isn't streaming), so captions ride the speaker's natural pauses.
 With `--to <lang>` each caption is translated by the same local Ollama server the
 dictation refiner uses (source + translation are shown, nothing leaves the machine;
-needs Ollama running). Stop with Ctrl+C.
+needs Ollama running). With `--suggest`, press F9 in a live foreign-language call and
+Koe drafts a reply you can say back — in the call's language plus a gloss in yours;
+`--role "..."` sets a persona and `--context <file>` pre-loads briefing material (your
+resume, the job description, the agenda) so replies are grounded in it. Stop with Ctrl+C.
 
 ## How it works
 

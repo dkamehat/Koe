@@ -17,11 +17,23 @@ Usage:
     python interpreter.py --translate      # fast EN-only via Whisper's own translation
     python interpreter.py --threshold 0.01 # raise if silence is misread as speech
     python interpreter.py --max-seg 6      # shorter hard cap = less lag on long monologues
+    python interpreter.py --suggest        # press F9 for a suggested reply (the apex)
+    python interpreter.py --auto-suggest   # auto-line up a reply under each question
+    python interpreter.py --suggest-key f8 # use a different hotkey
     python interpreter.py --debug          # RMS meter + per-caption (+latency) readout
 
 `--to <lang>` transcribes verbatim, then translates each caption with the local
 Ollama server (the same one the dictation refiner uses) and prints source + target.
 It needs Ollama running; if it isn't, captions fall back to source-only.
+
+`--suggest` (the apex): in a live foreign-language call, press a hotkey (default
+F9) and Koe reads the recent transcript and prints a reply you can say back — in
+the call's language + a gloss in your language (--to / default ja). Optional
+--role "..." sets a short persona; --context <file> pre-loads briefing material
+(your resume, the job description, the meeting agenda) so replies are grounded in
+it. Local-only via Ollama.
+    python interpreter.py --to ja --suggest --role "PM interview, be concise"
+    python interpreter.py --to ja --suggest --context brief.md  # ground replies in a file
 
 Stop with Ctrl+C. Requires `PyAudioWPatch` (WASAPI loopback on Windows).
 
@@ -39,6 +51,7 @@ import queue
 import sys
 import threading
 import time
+from collections import deque
 
 import numpy as np
 
@@ -144,12 +157,44 @@ def _is_hallucination(text: str, audio: np.ndarray) -> bool:
     return text.strip().lower() in _HALLUCINATION and (len(audio) / SR) < 1.6
 
 
+def _is_question(text: str) -> bool:
+    """A natural 'your turn to reply' cue for --auto-suggest."""
+    return text.rstrip().endswith(("?", "？"))
+
+
+class _SuggestHelper:
+    """Builds the reply-suggestion lines, shared by the F9 hotkey and the auto path
+    so both render identically. Returns lines (caller prints) — no I/O of its own."""
+
+    def __init__(self, suggester, gloss, reply_lang: str | None, gloss_lang: str):
+        self.suggester = suggester
+        self.gloss = gloss
+        self.reply_lang = reply_lang          # None => auto-detect from the transcript
+        self.gloss_lang = gloss_lang
+
+    def lines(self, convo: list[str], indent: str = "  ") -> list[str]:
+        from koe.refiner import _has_cjk
+        from koe.translator import language_name
+        if not convo:
+            return []
+        rl = self.reply_lang or ("ja" if _has_cjk(convo[-1]) else "en")
+        reply = self.suggester.suggest(convo, rl)
+        if not reply:
+            return []
+        out = [f"{indent}>> reply [{language_name(rl)}]: {reply}"]
+        if rl != self.gloss_lang:
+            out.append(f"{indent}   [{language_name(self.gloss_lang)}]: "
+                       f"{self.gloss.translate(reply)}")
+        return out
+
+
 class _Transcriber(threading.Thread):
     """Consumer: pull whole utterances and caption them, off the capture path so
     the GPU never stalls audio. One thread => captions stay in spoken order."""
 
     def __init__(self, engine, task: str, seg_q: "queue.Queue", t0: float,
-                 translator=None, debug: bool = False):
+                 translator=None, debug: bool = False, transcript: "deque | None" = None,
+                 helper: "_SuggestHelper | None" = None, auto_suggest: bool = False):
         super().__init__(daemon=True)
         self._engine = engine
         self._task = task
@@ -157,6 +202,9 @@ class _Transcriber(threading.Thread):
         self._t0 = t0
         self._translator = translator
         self._debug = debug
+        self._transcript = transcript
+        self._helper = helper
+        self._auto = auto_suggest
 
     def run(self) -> None:
         while True:
@@ -169,6 +217,8 @@ class _Transcriber(threading.Thread):
             text = self._engine.transcribe(audio, task=self._task).strip()
             if not text or _is_hallucination(text, audio):
                 continue
+            if self._transcript is not None:
+                self._transcript.append(text)   # context for --suggest
             stamp = time.strftime("%M:%S", time.gmtime(time.time() - self._t0))
             # Felt latency: the speaker's last voiced moment -> caption on screen.
             suffix = f"  (+{time.time() - t_voice:.1f}s)" if self._debug else ""
@@ -176,10 +226,18 @@ class _Transcriber(threading.Thread):
             if self._translator is not None:
                 # Source printed immediately above; translation follows when ready.
                 print(f"          ↳ {self._translator.translate(text)}", flush=True)
+            # Auto-suggest: when the other party asks something, line up a reply
+            # right under the caption. (Reading own-thread transcript -> no race.)
+            if self._auto and self._helper is not None and _is_question(text):
+                for ln in self._helper.lines(list(self._transcript)):
+                    print(ln, flush=True)
 
 
 def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
-            to: str | None, max_seg_s: float) -> None:
+            to: str | None, max_seg_s: float, suggest: bool = False,
+            suggest_key: str = "f9", reply_lang: str | None = None,
+            role: str | None = None, context: str | None = None,
+            auto_suggest: bool = False) -> None:
     try:
         import pyaudiowpatch  # noqa: F401
     except ImportError:
@@ -211,6 +269,25 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
                   f"source-only (start ollama to translate to {language_name(to)}).",
                   file=sys.stderr, flush=True)
 
+    # Reply suggestion: keep a rolling transcript and build a suggester. Triggered
+    # on-demand by the F9 hotkey (--suggest) and/or automatically on questions
+    # (--auto-suggest). Needs ollama (same as --to).
+    want_suggest = suggest or auto_suggest
+    transcript = deque(maxlen=16) if want_suggest else None
+    helper = None
+    if want_suggest:
+        from koe.refiner import _ollama_available
+        if _ollama_available(cfg.ollama_url):
+            from koe.responder import ReplySuggester
+            from koe.translator import OllamaTranslator
+            suggester = ReplySuggester(cfg.ollama_model, cfg.ollama_url, role, context)
+            gloss = OllamaTranslator(cfg.ollama_model, cfg.ollama_url, to or "ja")
+            helper = _SuggestHelper(suggester, gloss, reply_lang, to or "ja")
+        else:
+            print("! ollama not running — reply suggestions disabled.",
+                  file=sys.stderr, flush=True)
+            transcript = None
+
     print(f"loading {cfg.model} ...", flush=True)
     engine = TranscriptionEngine(model=cfg.model, device=cfg.device,
                                  compute_type=cfg.compute_type, language=cfg.language)
@@ -223,6 +300,34 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     print(f"\nKoe Interpreter — capturing: {dev['name']}\n"
           f"mode={mode}  threshold={threshold}  (Ctrl+C to stop)\n", flush=True)
 
+    # Register the F9 hotkey (global, so it works while the call is focused).
+    hotkey_on = False
+    if helper is not None:
+        def _suggest_now():
+            # transcript is mutated by the transcribe thread; snapshot defensively
+            # (a deque at maxlen can be mutated mid-iteration -> RuntimeError).
+            try:
+                convo = list(transcript)
+            except RuntimeError:
+                convo = list(transcript)
+            if not convo:
+                print("\n  (no speech captured yet)\n", flush=True)
+                return
+            print("\n  ... thinking of a reply ...", flush=True)
+            lines = helper.lines(convo)
+            print(("\n".join(lines) if lines else "  (no suggestion)") + "\n", flush=True)
+
+        try:
+            import keyboard
+            keyboard.add_hotkey(suggest_key, _suggest_now)
+            hotkey_on = True
+            extra = " (auto on questions)" if auto_suggest else ""
+            print(f"(press {suggest_key} any time for a suggested reply{extra})\n",
+                  flush=True)
+        except Exception as exc:
+            print(f"! could not register hotkey {suggest_key!r}: {exc}",
+                  file=sys.stderr, flush=True)
+
     # VAD / segmentation parameters (in ~0.1 s blocks).
     SILENCE_HANG = 6     # 0.6 s of quiet ends an utterance
     MIN_SPEECH = 3       # >=0.3 s of speech before a flush is worthwhile
@@ -233,7 +338,8 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     seg_q: "queue.Queue" = queue.Queue()
     cap = _Capture(dev, raw_q)
     t0 = time.time()
-    tr = _Transcriber(engine, task, seg_q, t0, translator, debug)
+    tr = _Transcriber(engine, task, seg_q, t0, translator, debug, transcript,
+                      helper, auto_suggest)
     cap.start()
     tr.start()
 
@@ -276,6 +382,12 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
         cap.stop()
         seg_q.put(None)
         tr.join(timeout=2.0)
+        if hotkey_on:
+            try:
+                import keyboard
+                keyboard.remove_hotkey(suggest_key)
+            except Exception:
+                pass
 
 
 def main() -> None:
@@ -300,7 +412,25 @@ def main() -> None:
     threshold = float(_val("--threshold", "0.005"))
     max_seg = float(_val("--max-seg", "8"))   # hard segment cap in seconds (latency)
     debug = "--debug" in argv
-    cmd_run(device, task, threshold, debug, to, max_seg)
+    suggest = "--suggest" in argv
+    auto_suggest = "--auto-suggest" in argv
+    suggest_key = _val("--suggest-key", "f9")
+    reply_lang = _val("--reply-lang")          # None => auto-detect from the transcript
+    role = _val("--role")
+    # --context <file>: pre-load briefing material (resume, JD, agenda) to ground replies.
+    context = None
+    cpath = _val("--context")
+    if cpath:
+        from pathlib import Path
+        try:
+            raw = Path(cpath).read_text(encoding="utf-8")
+            context = raw[:8000]
+            note = " (truncated to 8000 chars)" if len(raw) > 8000 else ""
+            print(f"loaded context: {cpath} ({len(context)} chars){note}", flush=True)
+        except Exception as exc:
+            print(f"! could not read --context {cpath!r}: {exc}", file=sys.stderr, flush=True)
+    cmd_run(device, task, threshold, debug, to, max_seg,
+            suggest, suggest_key, reply_lang, role, context, auto_suggest)
 
 
 if __name__ == "__main__":
