@@ -4,6 +4,9 @@ requests>=2.31
 sounddevice==0.5.1
 numpy==2.2.6
 
+# --- Koe Interpreter: capture system audio via WASAPI loopback (interpreter.py) ---
+PyAudioWPatch==0.2.12.8
+
 # --- Hotkeys + text injection into the active window ---
 keyboard==0.13.5
 pyperclip==1.9.0

@@ -75,12 +75,20 @@ class TranscriptionEngine:
             compute_type = "float16" if device == "cuda" else "int8"
         return device, compute_type
 
-    def transcribe(self, audio: np.ndarray, initial_prompt: str | None = None) -> str:
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        initial_prompt: str | None = None,
+        task: str = "transcribe",
+    ) -> str:
+        """task='transcribe' = verbatim in the spoken language;
+        task='translate' = Whisper's built-in speech translation (target: English)."""
         if audio.size == 0:
             return ""
         segments, _info = self.model.transcribe(
             audio,
             language=self.language,
+            task=task,
             beam_size=5,
             # Fall back to higher temperatures only if the greedy pass looks
             # unreliable (low logprob / high gzip ratio) — keeps clean audio

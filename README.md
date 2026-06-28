@@ -130,6 +130,22 @@ Samples live in `./bench/` and are gitignored — your voice never leaves the ma
 See **[BENCHMARK.md](BENCHMARK.md)** for the metric (normalized CER), versioned
 results, and how Koe relates to the underlying model's published Japanese CER.
 
+## Live captions for system audio (`interpreter.py`)
+
+Koe Interpreter captions whatever is playing on your speakers — a meeting, a
+video, a call — using the same local engine. Nothing leaves the machine.
+
+```powershell
+python interpreter.py            # live captions of the default speaker (WASAPI loopback)
+python interpreter.py --list     # list capturable speakers
+python interpreter.py --translate # Whisper speech-translation -> English
+python interpreter.py --debug    # live RMS meter to tune --threshold
+```
+
+Audio is split into utterances at short silence gaps and transcribed per-utterance
+(faster-whisper isn't streaming), so captions ride the speaker's natural pauses.
+Stop with Ctrl+C.
+
 ## How it works
 
 ```

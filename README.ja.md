@@ -103,6 +103,21 @@ python bench.py run --model large-v3 --refiner rules   # config を触らず即A
 指標（正規化CER）・バージョン別結果・土台モデルの公開日本語CERとの関係は
 **[BENCHMARK.md](BENCHMARK.md)** を参照。
 
+## システム音声のライブ字幕（`interpreter.py`）
+
+Koe Interpreter は、スピーカーで再生中の音声（会議・動画・通話）を、同じローカル
+エンジンで字幕化します。音声は一切端末外に出ません。
+
+```powershell
+python interpreter.py            # 既定スピーカーをWASAPIループバックで字幕化
+python interpreter.py --list     # キャプチャ可能なスピーカー一覧
+python interpreter.py --translate # Whisperの音声翻訳 → 英語
+python interpreter.py --debug    # RMSメーターで --threshold を調整
+```
+
+faster-whisper は逐次ストリーミング非対応なので、無音の切れ目で発話を区切って
+発話単位で文字起こしします（話者の自然な間に追従）。停止は Ctrl+C。
+
 ## 仕組み
 
 ```
