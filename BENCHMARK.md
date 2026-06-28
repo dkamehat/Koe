@@ -35,7 +35,7 @@ Both strings are reduced to a canonical form **before** scoring, so CER measures
 *recognition*, not the reference author's punctuation taste:
 
 1. **NFKC** — folds full/half-width (`３`→`3`, `％`→`%`, half-width kana → full).
-2. **casefold** — Latin case is ignored (`Sakana AI` == `sakana ai`).
+2. **casefold** — Latin case is ignored (`Hugging Face` == `hugging face`).
 3. **strip** punctuation, separators and control chars (Unicode categories
    `P*`, `Z*`, `C*`) — including spaces, `。、！？「」・…` and ASCII `.,!?` etc.
 
