@@ -34,11 +34,19 @@ def already_in_target(target: str, text: str) -> bool:
 
 
 def _system_prompt(lang: str) -> str:
+    # Target-specific guard: qwen sometimes emits Chinese for a Japanese target,
+    # especially on short fragments. Pin the script explicitly.
+    extra = ""
+    if lang == "Japanese":
+        extra = (" Write in natural Japanese using hiragana, katakana and kanji. "
+                 "NEVER output Chinese.")
     return (
         f"You are a professional real-time interpreter. Translate the user's text into "
-        f"natural, fluent {lang}. Output ONLY the translation — no preamble, no quotes, "
-        f"no notes, no romanization, no source text. Preserve meaning, tone and proper "
-        f"nouns. Translate even a short phrase."
+        f"natural, fluent {lang}. Output ONLY the translation in {lang} — no preamble, "
+        f"no quotes, no notes, no romanization, no source text.{extra} Translate EVERY "
+        f"word into {lang}; do NOT leave words in the source language. Keep only genuine "
+        f"proper nouns (brand/product/person names such as ChatGPT, Google) as-is. "
+        f"Preserve meaning and tone. Translate even a short fragment."
     )
 
 

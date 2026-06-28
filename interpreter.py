@@ -16,7 +16,8 @@ Usage:
     python interpreter.py --to en          # ...or any target: en/zh/ko/es/fr/de/...
     python interpreter.py --translate      # fast EN-only via Whisper's own translation
     python interpreter.py --threshold 0.01 # raise if silence is misread as speech
-    python interpreter.py --debug          # show a live RMS meter to tune --threshold
+    python interpreter.py --max-seg 6      # shorter hard cap = less lag on long monologues
+    python interpreter.py --debug          # RMS meter + per-caption (+latency) readout
 
 `--to <lang>` transcribes verbatim, then translates each caption with the local
 Ollama server (the same one the dictation refiner uses) and prints source + target.
@@ -148,33 +149,37 @@ class _Transcriber(threading.Thread):
     the GPU never stalls audio. One thread => captions stay in spoken order."""
 
     def __init__(self, engine, task: str, seg_q: "queue.Queue", t0: float,
-                 translator=None):
+                 translator=None, debug: bool = False):
         super().__init__(daemon=True)
         self._engine = engine
         self._task = task
         self._q = seg_q
         self._t0 = t0
         self._translator = translator
+        self._debug = debug
 
     def run(self) -> None:
         while True:
-            audio = self._q.get()
-            if audio is None:
+            item = self._q.get()
+            if item is None:
                 break
+            audio, t_voice = item
             if len(audio) / SR < 0.4:        # too short to be real speech
                 continue
             text = self._engine.transcribe(audio, task=self._task).strip()
             if not text or _is_hallucination(text, audio):
                 continue
             stamp = time.strftime("%M:%S", time.gmtime(time.time() - self._t0))
-            print(f"[{stamp}] {text}", flush=True)
+            # Felt latency: the speaker's last voiced moment -> caption on screen.
+            suffix = f"  (+{time.time() - t_voice:.1f}s)" if self._debug else ""
+            print(f"[{stamp}] {text}{suffix}", flush=True)
             if self._translator is not None:
                 # Source printed immediately above; translation follows when ready.
                 print(f"          ↳ {self._translator.translate(text)}", flush=True)
 
 
 def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
-            to: str | None) -> None:
+            to: str | None, max_seg_s: float) -> None:
     try:
         import pyaudiowpatch  # noqa: F401
     except ImportError:
@@ -221,14 +226,14 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     # VAD / segmentation parameters (in ~0.1 s blocks).
     SILENCE_HANG = 6     # 0.6 s of quiet ends an utterance
     MIN_SPEECH = 3       # >=0.3 s of speech before a flush is worthwhile
-    MAX_SEG = 120        # 12 s hard cap so a monologue still gets captioned
+    MAX_SEG = max(20, int(max_seg_s / BLOCK_S))  # hard cap (--max-seg); lower = less lag
     PREROLL = 3          # keep 0.3 s of pre-speech so onsets aren't clipped
 
     raw_q: "queue.Queue[np.ndarray]" = queue.Queue()
     seg_q: "queue.Queue" = queue.Queue()
     cap = _Capture(dev, raw_q)
     t0 = time.time()
-    tr = _Transcriber(engine, task, seg_q, t0, translator)
+    tr = _Transcriber(engine, task, seg_q, t0, translator, debug)
     cap.start()
     tr.start()
 
@@ -236,6 +241,7 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     speech = silence = 0
     in_speech = False
     last_dbg = 0.0
+    last_voice_t = t0     # wall-clock of the most recent voiced block (for latency)
     try:
         while True:
             block = raw_q.get()
@@ -252,13 +258,14 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
                 speech += 1
                 silence = 0
                 in_speech = True
+                last_voice_t = time.time()
             else:
                 silence += 1
 
             ended = in_speech and silence >= SILENCE_HANG and speech >= MIN_SPEECH
             capped = len(seg) >= MAX_SEG and speech >= MIN_SPEECH
             if ended or capped:
-                seg_q.put(np.concatenate(seg).astype(np.float32))
+                seg_q.put((np.concatenate(seg).astype(np.float32), last_voice_t))
                 seg, speech, silence, in_speech = [], 0, 0, False
             elif not in_speech and len(seg) > PREROLL:
                 # Discard leading silence so the buffer (and latency) stays small.
@@ -291,8 +298,9 @@ def main() -> None:
     else:
         task = "transcribe"
     threshold = float(_val("--threshold", "0.005"))
+    max_seg = float(_val("--max-seg", "8"))   # hard segment cap in seconds (latency)
     debug = "--debug" in argv
-    cmd_run(device, task, threshold, debug, to)
+    cmd_run(device, task, threshold, debug, to, max_seg)
 
 
 if __name__ == "__main__":
