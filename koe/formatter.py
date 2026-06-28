@@ -55,6 +55,9 @@ def _tidy_spacing(text: str) -> str:
     text = re.sub(r" *\n *", "\n", text)
     text = re.sub(r" +([.,!?;:])", r"\1", text)
     text = re.sub(r"([.,!?;:])(?=[^\s.,!?;:])", r"\1 ", text)
+    # ...but never split a decimal or grouped number: undo a space wedged between
+    # a digit+separator and a digit ("3. 5" -> "3.5", "1, 000" -> "1,000").
+    text = re.sub(r"(?<=\d[.,]) (?=\d)", "", text)
     return text.strip()
 
 

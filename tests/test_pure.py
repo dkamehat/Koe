@@ -22,6 +22,17 @@ def test_formatter_spoken_period():
 def test_formatter_disabled_is_passthrough():
     assert format_text("um hello", enable=False) == "um hello"
 
+def test_formatter_keeps_decimal_intact():
+    # The '.' in 3.5 must not be treated as a sentence end ("3. 5").
+    assert format_text("来週までに3.5%改善します") == "来週までに3.5%改善します"
+
+def test_formatter_keeps_grouped_number_intact():
+    assert format_text("予算は1,000万円です") == "予算は1,000万円です"
+
+def test_formatter_still_spaces_real_sentence_break():
+    # A period between words should still get a following space.
+    assert format_text("done.next") == "Done. Next"
+
 def test_collapse_runaway_repeats_cjk_loop():
     assert collapse_runaway_repeats("私はハビ" + "シャッ" * 100) == "私はハビシャッ"
 
