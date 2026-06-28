@@ -6,6 +6,7 @@ from koe.formatter import format_text, collapse_runaway_repeats
 from koe.dictionary import Dictionary
 from koe.refiner import _language_preserved, _num_predict, _find_boundary, _has_cjk
 from koe.context_grabber import extract_terms
+from koe.translator import already_in_target, language_name
 
 
 # --- formatter --------------------------------------------------------------
@@ -116,3 +117,18 @@ def test_extract_terms_pulls_identifiers():
     terms = extract_terms("def get_user_by_id(user_id): return UserModel")
     assert "get_user_by_id" in terms
     assert "UserModel" in terms
+
+
+# --- interpreter translation gating -----------------------------------------
+
+def test_already_in_target_skips_same_language():
+    # JP text + target ja => already there (no needless LLM call / no self-translate)
+    assert already_in_target("ja", "今日は会議です") is True
+    assert already_in_target("ja", "this is english") is False
+    # EN target: latin-only counts as already-English; CJK does not
+    assert already_in_target("en", "David is from the UK") is True
+    assert already_in_target("en", "デイビッド") is False
+
+def test_language_name_known_and_passthrough():
+    assert language_name("ja") == "Japanese"
+    assert language_name("xx") == "xx"   # unknown code passes through unchanged

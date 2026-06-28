@@ -138,13 +138,16 @@ video, a call — using the same local engine. Nothing leaves the machine.
 ```powershell
 python interpreter.py            # live captions of the default speaker (WASAPI loopback)
 python interpreter.py --list     # list capturable speakers
-python interpreter.py --translate # Whisper speech-translation -> English
+python interpreter.py --to ja     # translate captions to Japanese (or en/zh/ko/...) via local ollama
+python interpreter.py --translate # fast EN-only via Whisper's own translation
 python interpreter.py --debug    # live RMS meter to tune --threshold
 ```
 
 Audio is split into utterances at short silence gaps and transcribed per-utterance
 (faster-whisper isn't streaming), so captions ride the speaker's natural pauses.
-Stop with Ctrl+C.
+With `--to <lang>` each caption is translated by the same local Ollama server the
+dictation refiner uses (source + translation are shown, nothing leaves the machine;
+needs Ollama running). Stop with Ctrl+C.
 
 ## How it works
 

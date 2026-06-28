@@ -12,9 +12,15 @@ Usage:
     python interpreter.py                 # live captions of the default speaker
     python interpreter.py --list          # list loopback devices you can capture
     python interpreter.py --device Realtek # capture a device whose name contains this
-    python interpreter.py --translate      # Whisper speech-translation -> English
+    python interpreter.py --to ja          # translate captions to Japanese (local ollama)
+    python interpreter.py --to en          # ...or any target: en/zh/ko/es/fr/de/...
+    python interpreter.py --translate      # fast EN-only via Whisper's own translation
     python interpreter.py --threshold 0.01 # raise if silence is misread as speech
     python interpreter.py --debug          # show a live RMS meter to tune --threshold
+
+`--to <lang>` transcribes verbatim, then translates each caption with the local
+Ollama server (the same one the dictation refiner uses) and prints source + target.
+It needs Ollama running; if it isn't, captions fall back to source-only.
 
 Stop with Ctrl+C. Requires `PyAudioWPatch` (WASAPI loopback on Windows).
 
@@ -141,12 +147,14 @@ class _Transcriber(threading.Thread):
     """Consumer: pull whole utterances and caption them, off the capture path so
     the GPU never stalls audio. One thread => captions stay in spoken order."""
 
-    def __init__(self, engine, task: str, seg_q: "queue.Queue", t0: float):
+    def __init__(self, engine, task: str, seg_q: "queue.Queue", t0: float,
+                 translator=None):
         super().__init__(daemon=True)
         self._engine = engine
         self._task = task
         self._q = seg_q
         self._t0 = t0
+        self._translator = translator
 
     def run(self) -> None:
         while True:
@@ -156,12 +164,17 @@ class _Transcriber(threading.Thread):
             if len(audio) / SR < 0.4:        # too short to be real speech
                 continue
             text = self._engine.transcribe(audio, task=self._task).strip()
-            if text and not _is_hallucination(text, audio):
-                stamp = time.strftime("%M:%S", time.gmtime(time.time() - self._t0))
-                print(f"[{stamp}] {text}", flush=True)
+            if not text or _is_hallucination(text, audio):
+                continue
+            stamp = time.strftime("%M:%S", time.gmtime(time.time() - self._t0))
+            print(f"[{stamp}] {text}", flush=True)
+            if self._translator is not None:
+                # Source printed immediately above; translation follows when ready.
+                print(f"          ↳ {self._translator.translate(text)}", flush=True)
 
 
-def cmd_run(device: str | None, task: str, threshold: float, debug: bool) -> None:
+def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
+            to: str | None) -> None:
     try:
         import pyaudiowpatch  # noqa: F401
     except ImportError:
@@ -181,10 +194,27 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool) -> Non
     finally:
         p.terminate()
 
+    # Translation target (--to): transcribe verbatim, then translate via local ollama.
+    translator = None
+    if to:
+        from koe.refiner import _ollama_available
+        from koe.translator import OllamaTranslator, language_name
+        if _ollama_available(cfg.ollama_url):
+            translator = OllamaTranslator(cfg.ollama_model, cfg.ollama_url, to)
+        else:
+            print(f"! ollama not running at {cfg.ollama_url} — captions will be "
+                  f"source-only (start ollama to translate to {language_name(to)}).",
+                  file=sys.stderr, flush=True)
+
     print(f"loading {cfg.model} ...", flush=True)
     engine = TranscriptionEngine(model=cfg.model, device=cfg.device,
                                  compute_type=cfg.compute_type, language=cfg.language)
-    mode = "translate->EN" if task == "translate" else "transcribe"
+    if translator is not None:
+        mode = f"transcribe -> translate to {translator.lang} ({cfg.ollama_model})"
+    elif task == "translate":
+        mode = "translate->EN (Whisper)"
+    else:
+        mode = "transcribe"
     print(f"\nKoe Interpreter — capturing: {dev['name']}\n"
           f"mode={mode}  threshold={threshold}  (Ctrl+C to stop)\n", flush=True)
 
@@ -198,7 +228,7 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool) -> Non
     seg_q: "queue.Queue" = queue.Queue()
     cap = _Capture(dev, raw_q)
     t0 = time.time()
-    tr = _Transcriber(engine, task, seg_q, t0)
+    tr = _Transcriber(engine, task, seg_q, t0, translator)
     cap.start()
     tr.start()
 
@@ -252,10 +282,17 @@ def main() -> None:
         return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
 
     device = _val("--device")
-    task = "translate" if "--translate" in argv else "transcribe"
+    to = _val("--to")  # target language for local-ollama translation (e.g. "ja")
+    # --to (ollama, any language) takes precedence; --translate is Whisper's own EN.
+    if to:
+        task = "transcribe"
+    elif "--translate" in argv:
+        task = "translate"
+    else:
+        task = "transcribe"
     threshold = float(_val("--threshold", "0.005"))
     debug = "--debug" in argv
-    cmd_run(device, task, threshold, debug)
+    cmd_run(device, task, threshold, debug, to)
 
 
 if __name__ == "__main__":
