@@ -21,8 +21,16 @@ on-device — the guiding constraint, not a feature.
 
 ## Next
 
-- [ ] Reply-language autodetect beyond en/ja (distinguish ja/zh/ko)
-- [ ] On-screen overlay captions over the call window (translucent, topmost)
+In rough priority order — smallest / lowest-risk first:
+
+- [ ] **Reply-language autodetect beyond en/ja** — distinguish ja/zh/ko for the reply
+  direction (today it's kana-based en/ja). Logic-only and unit-testable; start here.
+- [ ] **On-demand VAD recalibration** — a flag/hotkey to re-measure the noise floor
+  mid-session when the audio source changes (extends the startup calibration; reuses
+  `calibrate_threshold`).
+- [ ] **On-screen overlay captions** — a translucent, always-on-top window over the call
+  showing the live caption + translation. Display-only — never re-transcribe on the GPU
+  path (the dictation overlay was removed for exactly that regression).
 
 ## Non-goals
 
