@@ -135,6 +135,8 @@ results, and how Koe relates to the underlying model's published Japanese CER.
 Koe Interpreter captions whatever is playing on your speakers — a meeting, a
 video, a call — using the same local engine. Nothing leaves the machine.
 
+<p align="center"><img src="docs/interpreter-demo.gif" alt="Koe Interpreter — live captions of system audio, translated locally, with a drafted reply" width="760"></p>
+
 ```powershell
 python interpreter.py            # live captions of the default speaker (WASAPI loopback)
 python interpreter.py --list     # list capturable speakers
@@ -143,7 +145,9 @@ python interpreter.py --to ja --suggest  # press F9 for a reply you can say back
 python interpreter.py --to ja --auto-suggest  # auto-line up a reply under each question
 python interpreter.py --to ja --ollama-model qwen2.5:14b  # stronger LLM for cleaner translation
 python interpreter.py --translate # fast EN-only via Whisper's own translation
-python interpreter.py --debug    # live RMS meter to tune --threshold
+python interpreter.py --no-calibrate  # skip startup VAD calibration, use the static default
+python interpreter.py --threshold 0.01  # pin the VAD level by hand instead
+python interpreter.py --debug    # live RMS meter + per-caption latency
 ```
 
 Audio is split into utterances at short silence gaps and transcribed per-utterance
@@ -154,6 +158,11 @@ needs Ollama running). With `--suggest`, press F9 in a live foreign-language cal
 Koe drafts a reply you can say back — in the call's language plus a gloss in yours;
 `--role "..."` sets a persona and `--context <file>` pre-loads briefing material (your
 resume, the job description, the agenda) so replies are grounded in it. Stop with Ctrl+C.
+
+The VAD voicing threshold is **auto-calibrated** at startup — Koe measures the loopback
+noise floor for ~1 s and sets the gate just above it, so you don't hand-tune `--threshold`
+per machine or audio source. Pass `--threshold` to pin it, or `--no-calibrate` for the
+static default.
 
 For the cleanest translation, run the interpreter on a stronger local model with
 `--ollama-model qwen2.5:14b` (dictation stays on the lighter model). On the 7B model

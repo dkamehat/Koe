@@ -15,7 +15,9 @@ Usage:
     python interpreter.py --to ja          # translate captions to Japanese (local ollama)
     python interpreter.py --to en          # ...or any target: en/zh/ko/es/fr/de/...
     python interpreter.py --translate      # fast EN-only via Whisper's own translation
-    python interpreter.py --threshold 0.01 # raise if silence is misread as speech
+    python interpreter.py --threshold 0.01 # pin the VAD level (skips auto-calibration)
+    python interpreter.py --no-calibrate   # skip startup calibration, use the static default
+    python interpreter.py --calibrate-secs 2  # listen longer when measuring the noise floor
     python interpreter.py --max-seg 6      # shorter hard cap = less lag on long monologues
     python interpreter.py --suggest        # press F9 for a suggested reply (the apex)
     python interpreter.py --auto-suggest   # auto-line up a reply under each question
@@ -35,6 +37,11 @@ the call's language + a gloss in your language (--to / default ja). Optional
 it. Local-only via Ollama.
     python interpreter.py --to ja --suggest --role "PM interview, be concise"
     python interpreter.py --to ja --suggest --context brief.md  # ground replies in a file
+
+By default the VAD voicing threshold is **auto-calibrated** at startup: Koe
+listens to the loopback noise floor for ~1 s and sets the threshold just above
+it (so you don't have to hand-tune --threshold per machine/source). Pass
+--threshold to pin it, or --no-calibrate to use the static default.
 
 Stop with Ctrl+C. Requires `PyAudioWPatch` (WASAPI loopback on Windows).
 
@@ -58,6 +65,15 @@ import numpy as np
 
 SR = 16000              # Whisper's sample rate (we resample loopback down to this)
 BLOCK_S = 0.1           # ~0.1 s per captured block (VAD granularity)
+
+# VAD voicing threshold. Without --threshold, Koe measures the loopback noise
+# floor at startup and derives one (see calibrate_threshold); these are the knobs.
+DEFAULT_THRESHOLD = 0.005   # static fallback (and the absolute floor for auto)
+CALIB_PCTL = 35             # robust floor = this RMS percentile (ignores speech spikes)
+CALIB_MARGIN = 2.5          # threshold sits this far above the measured floor
+CALIB_FLOOR = 0.005         # never go below this (digital silence -> RMS ~0)
+CALIB_CEILING = 0.03        # never go above this; kept below typical speech RMS
+                            # (~0.06) so a loud calibration window can't gate out speech
 
 # Whisper's stock outputs on near-silence; drop them when the clip is too short
 # to plausibly contain them (avoids phantom "Thank you." captions between pauses).
@@ -121,6 +137,54 @@ def _to_16k_mono(raw: bytes, in_rate: int, channels: int) -> np.ndarray:
         xq = np.linspace(0.0, 1.0, num=n_out, endpoint=False)
         a = np.interp(xq, xp, a).astype(np.float32)
     return a
+
+
+def _block_rms(block: np.ndarray) -> float:
+    """Root-mean-square level of one audio block (0.0 for an empty block)."""
+    return float(np.sqrt(np.mean(block * block))) if block.size else 0.0
+
+
+def calibrate_threshold(rms_samples, margin: float = CALIB_MARGIN,
+                        floor: float = CALIB_FLOOR, ceiling: float = CALIB_CEILING,
+                        pctl: float = CALIB_PCTL) -> float:
+    """Derive a VAD voicing threshold from measured per-block RMS levels.
+
+    Pure (no I/O) so it's unit-tested. Uses a LOW percentile as the noise floor
+    so speech that slips into the calibration window (loopback can't be told to
+    go quiet) inflates the floor far less than a mean would, then sits `margin`×
+    above it. Clamped to [floor, ceiling]: digital silence (RMS ~0) can't drive
+    the threshold to zero, and loud audio mid-calibration can't push it so high
+    that real speech is missed.
+    """
+    arr = np.asarray(list(rms_samples), dtype=np.float32)
+    if arr.size == 0:
+        return floor
+    noise = float(np.percentile(arr, pctl))
+    return float(min(ceiling, max(floor, noise * margin)))
+
+
+def _measure_noise(dev: dict, secs: float) -> list[float]:
+    """Capture ~`secs` of loopback and return its per-block RMS levels (the input
+    to calibrate_threshold). Opens its own short-lived stream so it runs before
+    the capture/transcribe threads start."""
+    pa = _pa()
+    p = pa.PyAudio()
+    rate = int(dev["defaultSampleRate"])
+    ch = int(dev["maxInputChannels"])
+    chunk = max(1, int(rate * BLOCK_S))
+    st = p.open(format=pa.paInt16, channels=ch, rate=rate,
+                frames_per_buffer=chunk, input=True,
+                input_device_index=dev["index"])
+    rms: list[float] = []
+    try:
+        for _ in range(max(1, int(secs / BLOCK_S))):
+            raw = st.read(chunk, exception_on_overflow=False)
+            rms.append(_block_rms(_to_16k_mono(raw, rate, ch)))
+    finally:
+        st.stop_stream()
+        st.close()
+        p.terminate()
+    return rms
 
 
 class _Capture(threading.Thread):
@@ -269,11 +333,12 @@ class _Transcriber(threading.Thread):
                 self._suggest_q.put((list(self._transcript), False))
 
 
-def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
+def cmd_run(device: str | None, task: str, threshold: float | None, debug: bool,
             to: str | None, max_seg_s: float, suggest: bool = False,
             suggest_key: str = "f9", reply_lang: str | None = None,
             role: str | None = None, context: str | None = None,
-            auto_suggest: bool = False, ollama_model: str | None = None) -> None:
+            auto_suggest: bool = False, ollama_model: str | None = None,
+            calibrate: bool = True, calibrate_secs: float = 1.0) -> None:
     try:
         import pyaudiowpatch  # noqa: F401
     except ImportError:
@@ -310,6 +375,23 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
         dev = _pick_loopback(p, device)
     finally:
         p.terminate()
+
+    # VAD threshold: an explicit --threshold always wins; otherwise measure the
+    # loopback noise floor now (before the capture threads start) and derive one,
+    # unless --no-calibrate forces the static default.
+    auto_thr = threshold is None and calibrate
+    if threshold is None:
+        if calibrate:
+            print(f"calibrating noise floor from {dev['name']} "
+                  f"(~{calibrate_secs:g}s; --threshold/--no-calibrate to skip) ...",
+                  flush=True)
+            samples = _measure_noise(dev, calibrate_secs)
+            threshold = calibrate_threshold(samples)
+            floor = np.percentile(samples, CALIB_PCTL) if samples else 0.0
+            print(f"  noise floor p{CALIB_PCTL}={floor:.4f} -> threshold={threshold:.4f}",
+                  flush=True)
+        else:
+            threshold = DEFAULT_THRESHOLD
 
     # Translation target (--to): transcribe verbatim, then translate via local ollama.
     translator = None
@@ -352,7 +434,8 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     else:
         mode = "transcribe"
     print(f"\nKoe Interpreter — capturing: {dev['name']}\n"
-          f"mode={mode}  threshold={threshold}  (Ctrl+C to stop)\n", flush=True)
+          f"mode={mode}  threshold={threshold:.4f}{' (auto)' if auto_thr else ''}  "
+          f"(Ctrl+C to stop)\n", flush=True)
 
     # Suggestion worker: all reply generation (F9 + auto) runs here, off the
     # transcribe path and serialized so captions never stall on the LLM.
@@ -413,7 +496,7 @@ def cmd_run(device: str | None, task: str, threshold: float, debug: bool,
     try:
         while True:
             block = raw_q.get()
-            rms = float(np.sqrt(np.mean(block * block))) if block.size else 0.0
+            rms = _block_rms(block)
             voiced = rms > threshold
             if debug and time.time() - last_dbg > 0.5:
                 bar = "#" * min(40, int(rms * 400))
@@ -474,7 +557,12 @@ def main() -> None:
         task = "translate"
     else:
         task = "transcribe"
-    threshold = float(_val("--threshold", "0.005"))
+    # No --threshold => None, meaning "auto-calibrate from the noise floor at
+    # startup" (unless --no-calibrate). An explicit --threshold always wins.
+    thr_raw = _val("--threshold")
+    threshold = float(thr_raw) if thr_raw is not None else None
+    calibrate = "--no-calibrate" not in argv
+    calibrate_secs = float(_val("--calibrate-secs", "1.0"))
     max_seg = float(_val("--max-seg", "8"))   # hard segment cap in seconds (latency)
     debug = "--debug" in argv
     suggest = "--suggest" in argv
@@ -496,7 +584,8 @@ def main() -> None:
             print(f"! could not read --context {cpath!r}: {exc}", file=sys.stderr, flush=True)
     ollama_model = _val("--ollama-model")   # override the LLM for translate/suggest
     cmd_run(device, task, threshold, debug, to, max_seg,
-            suggest, suggest_key, reply_lang, role, context, auto_suggest, ollama_model)
+            suggest, suggest_key, reply_lang, role, context, auto_suggest, ollama_model,
+            calibrate, calibrate_secs)
 
 
 if __name__ == "__main__":

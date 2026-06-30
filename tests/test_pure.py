@@ -170,6 +170,35 @@ def test_leaked_chinese_only_flags_nontarget():
     assert leaked_nontarget_chinese("zh", "我会贡献") is False
 
 
+# --- interpreter VAD auto-calibration ---------------------------------------
+
+def test_calibrate_threshold_empty_returns_floor():
+    from interpreter import calibrate_threshold, CALIB_FLOOR
+    assert calibrate_threshold([]) == CALIB_FLOOR
+
+def test_calibrate_threshold_digital_silence_floors():
+    from interpreter import calibrate_threshold, CALIB_FLOOR
+    # near-zero loopback (digital silence) must NOT drive the threshold toward 0
+    assert calibrate_threshold([0.0001] * 20) == CALIB_FLOOR
+
+def test_calibrate_threshold_scales_with_noise():
+    from interpreter import calibrate_threshold, CALIB_MARGIN
+    # a steady 0.01 floor -> 0.01 * margin, within [floor, ceiling]
+    assert abs(calibrate_threshold([0.01] * 20) - 0.01 * CALIB_MARGIN) < 1e-6
+
+def test_calibrate_threshold_caps_at_ceiling():
+    from interpreter import calibrate_threshold, CALIB_CEILING
+    # loud audio playing during calibration can't push the gate above the ceiling
+    assert calibrate_threshold([0.2] * 20) == CALIB_CEILING
+
+def test_calibrate_threshold_ignores_speech_spikes():
+    from interpreter import calibrate_threshold
+    # mostly quiet with a few loud (speech) spikes mixed into the window: a low
+    # percentile keeps the floor near the quiet level, not the spikes.
+    samples = [0.002] * 17 + [0.25, 0.30, 0.28]
+    assert calibrate_threshold(samples) < calibrate_threshold([0.05] * 20)
+
+
 # --- reply suggestion prompt (responder) ------------------------------------
 
 def test_responder_prompt_includes_role_and_context():

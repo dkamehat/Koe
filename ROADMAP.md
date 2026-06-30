@@ -14,12 +14,15 @@ on-device — the guiding constraint, not a feature.
 - **Koe Interpreter** (`interpreter.py`) — live captions for *system* audio via
   WASAPI loopback → translate to any language (local Ollama) → **context-grounded
   reply suggestion** (F9 or auto-on-question, with `--role` / `--context`). All local.
+- **VAD auto-calibration** — the interpreter measures the loopback noise floor at
+  startup and derives its voicing threshold (robust low-percentile × margin, clamped),
+  so `--threshold` no longer needs hand-tuning per machine/source (`--no-calibrate`
+  to opt out).
 
 ## Next
 
 - [ ] Reply-language autodetect beyond en/ja (distinguish ja/zh/ko)
 - [ ] On-screen overlay captions over the call window (translucent, topmost)
-- [ ] VAD threshold auto-calibration (measure the noise floor at startup)
 
 ## Non-goals
 
