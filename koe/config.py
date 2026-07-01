@@ -96,6 +96,29 @@ class Config:
     claude_model: str = "claude-haiku-4-5-20251001"
     openai_model: str = "gpt-4o-mini"
 
+    # --- Koe Talk (talk.py): local voice conversation ---
+    # TTS backend: "auto" = VOICEVOX if its local server is running, else
+    # Windows SAPI (needs `pip install pyttsx3`), else text-only. Same
+    # local-server-with-fallback pattern as the ③ refiner.
+    voice_backend: str = "auto"
+    # 127.0.0.1 for the same reason as ollama_url above.
+    voicevox_url: str = "http://127.0.0.1:50021"
+    # VOICEVOX style id (3 = ずんだもん ノーマル in the default install;
+    # GET /speakers on the server lists everything installed).
+    voicevox_speaker: int = 3
+    # Ollama model for conversation replies; "" = reuse ollama_model. A stronger
+    # model (qwen2.5:14b) gives noticeably better conversation, same as --to.
+    talk_model: str = ""
+    # "mute" = mic ignored while the AI speaks (echo-proof on open speakers).
+    # "headphones" = mic stays live and sustained voice interrupts the AI.
+    talk_echo_mode: str = "mute"
+    # Scales every end-of-turn silence wait (see koe/turntaking.py). >1.0 if
+    # Koe keeps answering before you finished thinking.
+    talk_patience: float = 1.0
+    # Hotkey that interrupts the AI mid-reply. F8 — F9 belongs to the
+    # interpreter's reply suggestion.
+    talk_barge_key: str = "f8"
+
     @classmethod
     def load(cls) -> "Config":
         if CONFIG_PATH.exists():

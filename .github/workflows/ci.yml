@@ -13,9 +13,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Pure-logic tests need no GPU/model/mic — just these two light deps.
-      - run: pip install pytest requests
+      # Pure-logic tests need no GPU/model/mic — just these light deps.
+      # numpy: interpreter.py/talk.py import it at module level (pure math).
+      - run: pip install pytest requests numpy
       - name: Syntax-check all modules
-        run: python -m compileall koe
+        run: python -m compileall koe talk.py interpreter.py bench.py
       - name: Run unit tests
         run: python -m pytest -q

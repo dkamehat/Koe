@@ -18,6 +18,10 @@ uiautomation==2.0.20
 pystray==0.19.5
 Pillow==11.3.0
 
+# --- Koe Talk (talk.py): SAPI fallback voice when VOICEVOX isn't running ---
+# (VOICEVOX itself needs no package — it's a local HTTP server, like Ollama.)
+pyttsx3==2.99
+
 # --- CUDA runtime for the RTX GPU (CTranslate2 / faster-whisper backend) ---
 # These ship the cuBLAS + cuDNN DLLs so CUDA works without a manual CUDA Toolkit install.
 nvidia-cublas-cu12==12.4.5.8
