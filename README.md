@@ -168,6 +168,40 @@ For the cleanest translation, run the interpreter on a stronger local model with
 `--ollama-model qwen2.5:14b` (dictation stays on the lighter model). On the 7B model
 the odd Chinese character can slip into Japanese output; the 14B model removes it.
 
+## Talk with a local AI (`talk.py`) — 声トーク
+
+Koe Talk turns the same local pieces into a genuinely **sequential voice
+conversation**: speak, pause, and a local LLM answers out loud — then you answer
+back. No hotkey per turn, nothing leaves the machine. (The vision behind it:
+[docs/VISION.md](docs/VISION.md).)
+
+```powershell
+python talk.py                      # hands-free conversation (mic + speakers)
+python talk.py --text               # type instead of speaking (no mic needed)
+python talk.py --role "英会話の練習相手。優しく訂正して"   # persona
+python talk.py --context resume.md --role "面接官"        # grounded mock interview
+python talk.py --echo-mode headphones   # interrupt the AI just by speaking
+python talk.py --debug              # per-turn latency timeline (gap p50/p95)
+```
+
+What makes it a conversation rather than a voice chatbot:
+
+- **Your pauses are understood.** A turn ends on *meaning*, not on a fixed
+  timeout: 「…ですか？」 gets an answer in ~1 s, while 「…けど」 or a trailing
+  "and" holds your floor so you can think (`talk_patience` scales the waits).
+- **You can interrupt.** Press F8 any time — or, with `--echo-mode headphones`,
+  just start talking and the AI stops mid-word. It remembers only what it
+  actually got to say, like a person who was cut off.
+- **Keep talking while it thinks.** If you speak before the reply starts, the
+  pending reply is cancelled and your words extend the same turn (「あ、それと…」).
+- **The conversation becomes text.** Say 「貼って」 and the last reply is pasted
+  into whatever app has focus. Say 「終了」 to end.
+
+Voice output uses a local ladder: **[VOICEVOX](https://voicevox.hiroshiba.jp/)**
+if its app is running (best Japanese, free) → Windows SAPI (`pip install
+pyttsx3`) → text-only. Needs Ollama running (same as the ③ refiner; a stronger
+model helps: `--ollama-model qwen2.5:14b`).
+
 ## How it works
 
 ```
