@@ -362,6 +362,21 @@ def test_sanitize_strips_leaked_interrupted_marker():
         f"札幌の天気ですね。{INTERRUPTED_MARK}")
     assert sanitize_for_speech(f"こんにちは{INTERRUPTED_MARK}。") == "こんにちは。"
 
+def test_sanitize_drops_sentence_leaked_fully_chinese():
+    # Observed live on qwen2.5:14b (not just 7b — D13's "14b removes it" was
+    # validated for translation only): Koe Talk never legitimately replies in
+    # Chinese, so a fully-Chinese sentence is dropped, not shown/spoken.
+    assert sanitize_for_speech("目标明确很好啊。想从哪里开始练习呢？") == ""
+
+def test_sanitize_drops_sentence_with_partial_chinese_leak():
+    # A per-character strip would still leave "为了什么要练腿" readable as
+    # Chinese, so the whole sentence is dropped rather than surgically edited.
+    assert sanitize_for_speech("筋力アップ为了什么要练腿？") == ""
+
+def test_sanitize_keeps_clean_japanese_with_similar_looking_kanji():
+    # Must never false-positive on genuine Japanese (D13's precision guarantee).
+    assert sanitize_for_speech("筋力アップを頑張りましょう。") == "筋力アップを頑張りましょう。"
+
 def test_reply_token_bound_is_flat_and_positive():
     assert bound_reply_tokens("短い") == bound_reply_tokens("長い" * 200) > 0
 

@@ -159,6 +159,21 @@ precise "Chinese leaked" signal; deliberately excludes shinjitai shared with JP)
 - Model note: qwen2.5:**7b** occasionally leaks Chinese into JA output; **14b**
   removes it (validated). Interpreter accepts `--ollama-model` so translation can
   run a stronger model while dictation stays fast on 7b.
+- **Addendum (owner testing, 2026-07):** the "14b removes it" finding was
+  validated for *translation* only. Koe Talk's free-form conversation leaked
+  Chinese live on **both** 7b and 14b (e.g. "筋力アップ为了什么要练腿？",
+  "目标明确很好啊。想从哪里开始练习呢？") — upgrading the model is not a full
+  fix for this consumer. `koe/turntaking.py` now carries its own copy of the
+  `_SIMPLIFIED` set (`_SIMPLIFIED_CHINESE`, kept dependency-free like
+  `_has_cjk_local`) and `sanitize_for_speech` drops the WHOLE sentence on any
+  hit — unlike the translator's "retry once, harder," a full LLM retry isn't
+  practical against a per-sentence streaming reply, and a per-character strip
+  would still leave the rest of a Chinese sentence readable (the set is
+  precision-tuned, not exhaustive). Since Koe Talk never legitimately replies
+  in Chinese (only JA/EN), the check applies unconditionally, no target-language
+  plumbing needed.
+- Enforced (Talk): `koe/turntaking.py:sanitize_for_speech`,
+  `tests/test_talk.py::test_sanitize_drops_sentence_*`.
 
 ## D14 — Bench culture: no change to quality-affecting code without a number
 

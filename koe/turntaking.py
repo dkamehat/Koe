@@ -446,6 +446,19 @@ _BULLET_RE = re.compile(r"^[\s]*[-•・]\s+", re.MULTILINE)
 # (the So sweep is for emoji; 25℃ must not become 25).
 _MEANING_SYMBOLS = set("℃℉°〒※")
 
+# High-frequency *simplified-Chinese* characters whose Japanese counterparts
+# are a different glyph (贡 vs JP 貢, 样 vs 様, 决 vs 決) — copied from
+# koe/translator.py's `_SIMPLIFIED` set (duplicated to keep this module
+# dependency-free, same rationale as `_has_cjk_local`). A precise "Chinese
+# leaked" signal: deliberately excludes shinjitai shared with Japanese, so it
+# never false-positives on genuine JP text (D13). Koe Talk only ever replies
+# in Japanese or English — unlike the translator, Chinese is NEVER a
+# legitimate Talk output — so any hit here is always a leak.
+_SIMPLIFIED_CHINESE = set(
+    "这你个们时说别贡专适对么进过还现实关标题问让边应单习书东语觉师证样决间长门风"
+    "饭错银铁钟规护办击华协历县价见观务动变图难类认识试营销团队员报际网"
+)
+
 
 def sanitize_for_speech(text: str) -> str:
     """Strip whatever a TTS voice would read out ridiculously: code fences,
@@ -463,7 +476,20 @@ def sanitize_for_speech(text: str) -> str:
     t = t.replace(INTERRUPTED_MARK, "")
     t = "".join(c for c in t
                 if unicodedata.category(c) != "So" or c in _MEANING_SYMBOLS)
-    return re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"\s+", " ", t).strip()
+    # D13's charset detector as a boolean signal, not a text cleaner: a
+    # per-character strip would still leave the REST of a Chinese sentence
+    # readable (most common hanzi aren't in this narrow, high-precision set),
+    # so on any hit we drop the WHOLE sentence instead of surgically editing
+    # it. Observed live on qwen2.5:14b too (D13's "14b removes it" finding was
+    # validated only for translation, not free-form conversation) — a full
+    # retry-with-stricter-prompt (translator.py's approach) isn't practical
+    # here since sentences stream one at a time; the caller (talk.py) already
+    # treats an empty result as "nothing to say this beat" (D16), so the
+    # reply simply continues without the broken sentence.
+    if any(c in _SIMPLIFIED_CHINESE for c in t):
+        return ""
+    return t
 
 
 def bound_reply_tokens(user_text: str) -> int:
