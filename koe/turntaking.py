@@ -455,6 +455,12 @@ def sanitize_for_speech(text: str) -> str:
     t = _CODE_FENCE_RE.sub(" ", text)
     t = _BULLET_RE.sub("", t)
     t = _MD_MARKS_RE.sub("", t)
+    # TALK_SYSTEM_PROMPT explains what this literal marker MEANS when it ends a
+    # PAST assistant message — it is instructional text, never a real reply. A
+    # confused/weak local model can echo it back verbatim (observed live on
+    # qwen2.5:7b under a degenerate long turn) — same prompt-leakage class as
+    # D04's rejected initial_prompt demo sentence. Strip it unconditionally.
+    t = t.replace(INTERRUPTED_MARK, "")
     t = "".join(c for c in t
                 if unicodedata.category(c) != "So" or c in _MEANING_SYMBOLS)
     return re.sub(r"\s+", " ", t).strip()

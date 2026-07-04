@@ -354,6 +354,14 @@ def test_sanitize_keeps_meaningful_unit_symbols():
 def test_sanitize_flattens_newlines():
     assert "\n" not in sanitize_for_speech("一行目。\n\n二行目。")
 
+def test_sanitize_strips_leaked_interrupted_marker():
+    # A confused model can echo the system prompt's literal marker text back
+    # as if it were its own reply (observed live on qwen2.5:7b) — it must
+    # never reach the user's ears or the screen.
+    assert INTERRUPTED_MARK not in sanitize_for_speech(
+        f"札幌の天気ですね。{INTERRUPTED_MARK}")
+    assert sanitize_for_speech(f"こんにちは{INTERRUPTED_MARK}。") == "こんにちは。"
+
 def test_reply_token_bound_is_flat_and_positive():
     assert bound_reply_tokens("短い") == bound_reply_tokens("長い" * 200) > 0
 

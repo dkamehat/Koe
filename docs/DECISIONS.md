@@ -324,6 +324,37 @@ dropped from history until the merged turn commits.
 
 - Enforced: `ConversationHistory` (spoken-only, `interrupted`,
   `drop_pending_user`), `TurnEngine._cancel(merge=...)` + tests.
+- **Addendum (owner testing, 2026-07):** embedding the literal
+  `INTERRUPTED_MARK` string inside `TALK_SYSTEM_PROMPT` (to explain what it
+  means) risks a confused/weak local model echoing that instructional text
+  back as if it were its own reply — observed live on qwen2.5:7b under a
+  degenerate, un-punctuated merged turn (see D24 addendum below for how that
+  turn arose). Same prompt-leakage class as D04's rejected `initial_prompt`
+  demo sentence: never trust a prompt rule without a deterministic guard
+  behind it (D02's rule, generalized). Fix: `sanitize_for_speech` now strips
+  any literal `INTERRUPTED_MARK` occurrence unconditionally, so it can never
+  reach the screen or TTS regardless of why the model produced it.
+
+## D24 — addendum (owner testing, 2026-07): `--text` mode's merge window is gated by real TTS playback, not by typing speed
+
+`on_reply_started` (THINKING → SPEAKING) fires only on the `play_start` mailbox
+event, which — with a real voice backend (SAPI/VOICEVOX/AivisSpeech) — doesn't
+happen until synthesis finishes and playback actually begins (SAPI's first
+synthesis in particular can take seconds). A fast typist in `--text` mode will
+almost always send their next line while still in THINKING, so `on_barge_key`
+treats it as a merge (by design, D24/D28) rather than a fresh turn — every line
+appends to one ever-growing, punctuation-free turn instead of becoming a new
+one, and the assistant's spoken reply never reaches `ConversationHistory`
+(nothing was ever marked "spoken"). This is the turn-taking design working
+exactly as specified, not a defect in `TurnEngine` — but it is a real UX gap
+specific to keyboard-speed input against real-time TTS. **Not fixed in code**
+(no spec authorized changing `--text` mode's defaults); the documented
+workaround is `--text --voice-backend text` (the null backend marks a sentence
+"spoken" the instant it's synthesized, so turns complete near-instantly) or
+simply waiting for the reply to finish playing before typing the next line.
+Candidate future spec: default `--text` mode to `voice_backend="text"` unless
+`--voice-backend` is explicit, or print a "still speaking…" cue before the
+next `you:` prompt.
 
 ---
 
