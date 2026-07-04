@@ -214,3 +214,21 @@ def test_responder_prompt_minimal_has_no_dangling_sections():
     assert "Japanese" in p
     assert "BACKGROUND" not in p     # no empty background block when no context
     assert "context/goal" not in p   # no empty role line when no role
+
+
+# --- version (release-pipeline) ----------------------------------------------
+
+def test_version_is_semver():
+    import re
+    from pathlib import Path
+    import koe
+
+    assert re.match(r"^\d+\.\d+\.\d+$", koe.__version__)
+
+    # pyproject.toml mirrors koe.__version__ by hand (see the sync comment in
+    # both files) — a 5-line parser is enough, no tomllib/tooling needed.
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    match = re.search(r'^version = "([^"]+)"', text, re.MULTILINE)
+    assert match is not None
+    assert match.group(1) == koe.__version__
