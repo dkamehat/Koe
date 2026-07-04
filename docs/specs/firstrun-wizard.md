@@ -1,4 +1,4 @@
-# Spec: firstrun-wizard — first-launch setup wizard  (status: ready)
+# Spec: firstrun-wizard — first-launch setup wizard  (status: implemented)
 
 ## Goal
 
@@ -141,7 +141,11 @@ if (first_run or "--setup" in argv) and "--console" not in argv:
 - `test_device_choices_empty_list` — returns just the default entry
 - `test_level_fraction_clamps` — 0→0.0, 0.15→1.0, 1.0→1.0, monotonic in between
 - `test_firstrun_module_imports_headless` — `import koe.firstrun` with tkinter/sounddevice blocked via a `builtins.__import__` shim (the overlay test's technique)
-- `test_app_still_imports` — `import koe.app`
+- `test_app_compiles` — `py_compile` koe/app.py. (Spec fix after implementer
+  escalation: app.py is an I/O edge that imports `keyboard` at module scope by
+  design — it was NEVER headless-importable, so an `import koe.app` test cannot
+  pass on CI. Syntax-compilation is the right guard. Lazy-importing app.py's
+  Windows deps would be its own spec if ever needed.)
 
 ## Acceptance criteria
 

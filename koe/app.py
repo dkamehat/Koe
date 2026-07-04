@@ -2,6 +2,8 @@
 
 Hold the hotkey, speak, release. Audio is transcribed on-device and the cleaned
 text is typed into whatever window has focus. Nothing leaves the machine.
+
+Run with --setup to (re)open the first-run setup wizard at any time.
 """
 
 from __future__ import annotations
@@ -439,6 +441,9 @@ def main(argv: list[str] | None = None) -> None:
         _diagnose_keys()
         return
 
+    from .config import CONFIG_PATH
+    first_run = not CONFIG_PATH.exists()   # BEFORE load() — load() creates the file
+
     cfg = Config.load()
 
     # Allow a couple of quick CLI overrides without editing the file.
@@ -449,6 +454,13 @@ def main(argv: list[str] | None = None) -> None:
             cfg.language = argv[i + 1]
         elif a == "--device" and i + 1 < len(argv):
             cfg.device = argv[i + 1]
+
+    if (first_run or "--setup" in argv) and "--console" not in argv:
+        try:
+            from .firstrun import run_wizard
+            run_wizard(cfg)
+        except Exception as exc:   # belt over run_wizard's own braces
+            print(f"[setup wizard unavailable: {exc}] starting with defaults.")
 
     # Default: system-tray shell. Use --console for the plain terminal loop.
     if "--console" in argv:

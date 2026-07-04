@@ -21,6 +21,11 @@ live in [docs/DECISIONS.md](docs/DECISIONS.md).
   startup and derives its voicing threshold (robust low-percentile × margin, clamped),
   so `--threshold` no longer needs hand-tuning per machine/source (`--no-calibrate`
   to opt out).
+- **First-run setup wizard** (`run.py --setup`, auto on first launch) — GPU
+  detection → model recommendation → live mic test → hotkey mode; writes only
+  existing config keys; cancel-safe. Spec: docs/specs/firstrun-wizard.md.
+- **AivisSpeech in the TTS ladder** — probed before VOICEVOX (same API, more
+  natural Japanese); per-server speaker ids. Spec: docs/specs/aivisspeech.md.
 - **Overlay captions** (`interpreter.py --overlay`) — translucent, click-through,
   always-on-top caption strip (source + translation + suggested reply) over the
   call window. Display-only by contract (D17). Spec: docs/specs/overlay-v1.md.
