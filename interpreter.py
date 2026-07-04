@@ -24,6 +24,7 @@ Usage:
     python interpreter.py --suggest-key f8 # use a different hotkey
     python interpreter.py --to ja --ollama-model qwen2.5:14b  # stronger LLM for translation
     python interpreter.py --debug          # RMS meter + per-caption (+latency) readout
+    python interpreter.py --to ja --suggest --overlay  # translucent caption strip over the call window
 
 `--to <lang>` transcribes verbatim, then translates each caption with the local
 Ollama server (the same one the dictation refiner uses) and prints source + target.
@@ -62,6 +63,9 @@ import time
 from collections import deque
 
 import numpy as np
+
+import koe
+from koe.overlaytext import KIND_SOURCE, KIND_SUGGESTION, KIND_TRANSLATION
 
 SR = 16000              # Whisper's sample rate (we resample loopback down to this)
 BLOCK_S = 0.1           # ~0.1 s per captured block (VAD granularity)
@@ -269,10 +273,12 @@ class _SuggestWorker(threading.Thread):
     on the LLM, and serializes F9 + auto requests (one ollama call at a time).
     Queue items are (transcript_snapshot, manual) or None to stop."""
 
-    def __init__(self, helper: "_SuggestHelper", q: "queue.Queue"):
+    def __init__(self, helper: "_SuggestHelper", q: "queue.Queue",
+                 overlay_q: "queue.Queue | None" = None):
         super().__init__(daemon=True)
         self._helper = helper
         self._q = q
+        self._overlay_q = overlay_q
 
     def run(self) -> None:
         while True:
@@ -283,6 +289,12 @@ class _SuggestWorker(threading.Thread):
             lines = self._helper.lines(convo)
             if lines:
                 print("\n" + "\n".join(lines) + "\n", flush=True)
+                if self._overlay_q is not None:
+                    # One item, not one per line: CaptionBuffer keeps only the
+                    # latest suggestion, so per-line puts would leave just the
+                    # last line (the gloss) on screen and lose the reply text.
+                    self._overlay_q.put(
+                        (KIND_SUGGESTION, " ".join(l.strip() for l in lines)))
             elif manual:
                 print("  (no suggestion)\n", flush=True)
 
@@ -293,7 +305,8 @@ class _Transcriber(threading.Thread):
 
     def __init__(self, engine, task: str, seg_q: "queue.Queue", t0: float,
                  translator=None, debug: bool = False, transcript: "deque | None" = None,
-                 suggest_q: "queue.Queue | None" = None, auto_suggest: bool = False):
+                 suggest_q: "queue.Queue | None" = None, auto_suggest: bool = False,
+                 overlay_q: "queue.Queue | None" = None):
         super().__init__(daemon=True)
         self._engine = engine
         self._task = task
@@ -304,6 +317,7 @@ class _Transcriber(threading.Thread):
         self._transcript = transcript
         self._suggest_q = suggest_q
         self._auto = auto_suggest
+        self._overlay_q = overlay_q
 
     def run(self) -> None:
         while True:
@@ -322,9 +336,14 @@ class _Transcriber(threading.Thread):
             # Felt latency: the speaker's last voiced moment -> caption on screen.
             suffix = f"  (+{time.time() - t_voice:.1f}s)" if self._debug else ""
             print(f"[{stamp}] {text}{suffix}", flush=True)
+            if self._overlay_q is not None:
+                self._overlay_q.put((KIND_SOURCE, text))
             if self._translator is not None:
                 # Source printed immediately above; translation follows when ready.
-                print(f"          ↳ {self._translator.translate(text)}", flush=True)
+                tr = self._translator.translate(text)
+                print(f"          ↳ {tr}", flush=True)
+                if self._overlay_q is not None:
+                    self._overlay_q.put((KIND_TRANSLATION, tr))
             # Auto-suggest: when the other party asks something, hand a reply
             # request to the worker (never block captions). Coalesce bursts: only
             # enqueue when the worker is idle so questions don't pile up.
@@ -333,12 +352,68 @@ class _Transcriber(threading.Thread):
                 self._suggest_q.put((list(self._transcript), False))
 
 
+def _segment_loop(raw_q: "queue.Queue[np.ndarray]", seg_q: "queue.Queue",
+                   threshold: float, debug: bool, max_seg_s: float,
+                   stop: threading.Event) -> None:
+    """Consumer of raw capture blocks -> cuts them into utterances (energy VAD).
+    Extracted out of cmd_run (was its `try: while True:` body, unchanged) so
+    --overlay can run this on a background thread while tkinter keeps the main
+    thread (koe/overlay.py's run_overlay is main-thread-only). `stop` lets the
+    caller end the loop without relying on KeyboardInterrupt (tkinter's
+    mainloop doesn't propagate it the way a plain terminal loop does): the
+    blocking raw_q.get() becomes a 0.5s-timeout get + continue so the flag is
+    honored within 0.5s either way.
+    """
+    # VAD / segmentation parameters (in ~0.1 s blocks).
+    SILENCE_HANG = 6     # 0.6 s of quiet ends an utterance
+    MIN_SPEECH = 3       # >=0.3 s of speech before a flush is worthwhile
+    MAX_SEG = max(20, int(max_seg_s / BLOCK_S))  # hard cap (--max-seg); lower = less lag
+    PREROLL = 3          # keep 0.3 s of pre-speech so onsets aren't clipped
+
+    seg: list[np.ndarray] = []
+    speech = silence = 0
+    in_speech = False
+    last_dbg = 0.0
+    last_voice_t = time.time()   # wall-clock of the most recent voiced block (for latency)
+    while not stop.is_set():
+        try:
+            block = raw_q.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        rms = _block_rms(block)
+        voiced = rms > threshold
+        if debug and time.time() - last_dbg > 0.5:
+            bar = "#" * min(40, int(rms * 400))
+            print(f"  rms={rms:.4f} {'VOICED' if voiced else 'quiet '} "
+                  f"|{bar:<40}| pending={seg_q.qsize()}", file=sys.stderr, flush=True)
+            last_dbg = time.time()
+
+        seg.append(block)
+        if voiced:
+            speech += 1
+            silence = 0
+            in_speech = True
+            last_voice_t = time.time()
+        else:
+            silence += 1
+
+        ended = in_speech and silence >= SILENCE_HANG and speech >= MIN_SPEECH
+        capped = len(seg) >= MAX_SEG and speech >= MIN_SPEECH
+        if ended or capped:
+            seg_q.put((np.concatenate(seg).astype(np.float32), last_voice_t))
+            seg, speech, silence, in_speech = [], 0, 0, False
+        elif not in_speech and len(seg) > PREROLL:
+            # Discard leading silence so the buffer (and latency) stays small.
+            seg = seg[-PREROLL:]
+
+
 def cmd_run(device: str | None, task: str, threshold: float | None, debug: bool,
             to: str | None, max_seg_s: float, suggest: bool = False,
             suggest_key: str = "f9", reply_lang: str | None = None,
             role: str | None = None, context: str | None = None,
             auto_suggest: bool = False, ollama_model: str | None = None,
-            calibrate: bool = True, calibrate_secs: float = 1.0) -> None:
+            calibrate: bool = True, calibrate_secs: float = 1.0,
+            overlay: bool = False) -> None:
     try:
         import pyaudiowpatch  # noqa: F401
     except ImportError:
@@ -433,9 +508,15 @@ def cmd_run(device: str | None, task: str, threshold: float | None, debug: bool,
         mode = "translate->EN (Whisper)"
     else:
         mode = "transcribe"
-    print(f"\nKoe Interpreter — capturing: {dev['name']}\n"
+    print(f"\nKoe Interpreter v{koe.__version__} — capturing: {dev['name']}\n"
           f"mode={mode}  threshold={threshold:.4f}{' (auto)' if auto_thr else ''}  "
           f"(Ctrl+C to stop)\n", flush=True)
+
+    # Overlay sink: only created when --overlay is set; every worker below
+    # takes overlay_q=None by default, so not passing --overlay is a byte-
+    # identical no-op (Goal: "no behavior change whatsoever when --overlay is
+    # absent").
+    overlay_q: "queue.Queue | None" = queue.Queue() if overlay else None
 
     # Suggestion worker: all reply generation (F9 + auto) runs here, off the
     # transcribe path and serialized so captions never stall on the LLM.
@@ -443,7 +524,7 @@ def cmd_run(device: str | None, task: str, threshold: float | None, debug: bool,
     worker = None
     if helper is not None:
         suggest_q = queue.Queue()
-        worker = _SuggestWorker(helper, suggest_q)
+        worker = _SuggestWorker(helper, suggest_q, overlay_q)
         worker.start()
 
     # Register the F9 hotkey (global, so it works while the call is focused).
@@ -473,57 +554,39 @@ def cmd_run(device: str | None, task: str, threshold: float | None, debug: bool,
             print(f"! could not register hotkey {suggest_key!r}: {exc}",
                   file=sys.stderr, flush=True)
 
-    # VAD / segmentation parameters (in ~0.1 s blocks).
-    SILENCE_HANG = 6     # 0.6 s of quiet ends an utterance
-    MIN_SPEECH = 3       # >=0.3 s of speech before a flush is worthwhile
-    MAX_SEG = max(20, int(max_seg_s / BLOCK_S))  # hard cap (--max-seg); lower = less lag
-    PREROLL = 3          # keep 0.3 s of pre-speech so onsets aren't clipped
-
     raw_q: "queue.Queue[np.ndarray]" = queue.Queue()
     seg_q: "queue.Queue" = queue.Queue()
     cap = _Capture(dev, raw_q)
     t0 = time.time()
     tr = _Transcriber(engine, task, seg_q, t0, translator, debug, transcript,
-                      suggest_q, auto_suggest)
+                      suggest_q, auto_suggest, overlay_q)
     cap.start()
     tr.start()
 
-    seg: list[np.ndarray] = []
-    speech = silence = 0
-    in_speech = False
-    last_dbg = 0.0
-    last_voice_t = t0     # wall-clock of the most recent voiced block (for latency)
+    # stop: a fresh Event nobody sets on the non-overlay path (identical to
+    # today's behavior — KeyboardInterrupt is what ends the loop there). On
+    # the overlay path _segment_loop runs on its own thread while tkinter
+    # takes the main thread; stop.set() below tells that thread to end once
+    # the overlay window closes (or Ctrl+C reaches run_overlay).
+    stop = threading.Event()
+    seg_thread: "threading.Thread | None" = None
     try:
-        while True:
-            block = raw_q.get()
-            rms = _block_rms(block)
-            voiced = rms > threshold
-            if debug and time.time() - last_dbg > 0.5:
-                bar = "#" * min(40, int(rms * 400))
-                print(f"  rms={rms:.4f} {'VOICED' if voiced else 'quiet '} "
-                      f"|{bar:<40}| pending={seg_q.qsize()}", file=sys.stderr, flush=True)
-                last_dbg = time.time()
-
-            seg.append(block)
-            if voiced:
-                speech += 1
-                silence = 0
-                in_speech = True
-                last_voice_t = time.time()
-            else:
-                silence += 1
-
-            ended = in_speech and silence >= SILENCE_HANG and speech >= MIN_SPEECH
-            capped = len(seg) >= MAX_SEG and speech >= MIN_SPEECH
-            if ended or capped:
-                seg_q.put((np.concatenate(seg).astype(np.float32), last_voice_t))
-                seg, speech, silence, in_speech = [], 0, 0, False
-            elif not in_speech and len(seg) > PREROLL:
-                # Discard leading silence so the buffer (and latency) stays small.
-                seg = seg[-PREROLL:]
+        if overlay_q is not None:
+            seg_thread = threading.Thread(
+                target=_segment_loop,
+                args=(raw_q, seg_q, threshold, debug, max_seg_s, stop),
+                daemon=True)
+            seg_thread.start()
+            from koe.overlay import run_overlay
+            run_overlay(overlay_q, stop, cfg)
+        else:
+            _segment_loop(raw_q, seg_q, threshold, debug, max_seg_s, stop)
     except KeyboardInterrupt:
         print("\nstopping ...", flush=True)
     finally:
+        stop.set()
+        if seg_thread is not None:
+            seg_thread.join(timeout=2.0)
         cap.stop()
         seg_q.put(None)
         tr.join(timeout=2.0)
@@ -583,9 +646,10 @@ def main() -> None:
         except Exception as exc:
             print(f"! could not read --context {cpath!r}: {exc}", file=sys.stderr, flush=True)
     ollama_model = _val("--ollama-model")   # override the LLM for translate/suggest
+    overlay = "--overlay" in argv   # translucent on-screen caption strip (koe/overlay.py)
     cmd_run(device, task, threshold, debug, to, max_seg,
             suggest, suggest_key, reply_lang, role, context, auto_suggest, ollama_model,
-            calibrate, calibrate_secs)
+            calibrate, calibrate_secs, overlay)
 
 
 if __name__ == "__main__":

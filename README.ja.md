@@ -112,6 +112,7 @@ Koe Interpreter は、スピーカーで再生中の音声（会議・動画・�
 python interpreter.py            # 既定スピーカーをWASAPIループバックで字幕化
 python interpreter.py --list     # キャプチャ可能なスピーカー一覧
 python interpreter.py --to ja     # 字幕を日本語へ翻訳（en/zh/ko/… も可・ローカルollama）
+python interpreter.py --to ja --overlay  # 通話画面の上に半透明の字幕を重ねて表示
 python interpreter.py --to ja --suggest  # F9 で「返すべき返事」を提案（＋日本語訳）
 python interpreter.py --to ja --auto-suggest  # 質問を検知したら返信案を自動で下に表示
 python interpreter.py --to ja --ollama-model qwen2.5:14b  # 翻訳を強いモデルで（要 ollama pull）
@@ -130,6 +131,11 @@ faster-whisper は逐次ストリーミング非対応なので、無音の切�
 翻訳品質を上げるには `--ollama-model qwen2.5:14b` で通訳側だけ強いモデルを使えます
 （口述筆記は軽いモデルのまま）。7B では日本語出力に中国語が混じることがありますが、
 14B ではほぼ解消します。
+
+`--overlay` を付けると、字幕（原文＋訳文＋返答案）が画面下部に**半透明・クリック
+透過・常に最前面**の帯として重なり、ターミナルを見ずに通話画面だけで完結します。
+`config.json` の `overlay_opacity` / `overlay_font_size` で調整可。表示専用で、
+フルスクリーン専有アプリ（一部ゲーム）には重なりません（ウィンドウ表示なら可）。
 
 ## ローカルAIと会話する（`talk.py`）— 声トーク
 

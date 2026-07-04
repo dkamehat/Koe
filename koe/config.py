@@ -119,6 +119,12 @@ class Config:
     # interpreter's reply suggestion.
     talk_barge_key: str = "f8"
 
+    # --- Interpreter overlay captions (interpreter.py --overlay) ---
+    # Translucent, click-through, always-on-top caption strip. Display-only by
+    # contract (D17): it renders pipeline output, never triggers GPU work.
+    overlay_opacity: float = 0.85   # window alpha (0.5 barely-there .. 1.0 solid)
+    overlay_font_size: int = 18     # pt; bump for presentations / small screens
+
     @classmethod
     def load(cls) -> "Config":
         if CONFIG_PATH.exists():

@@ -141,6 +141,7 @@ video, a call — using the same local engine. Nothing leaves the machine.
 python interpreter.py            # live captions of the default speaker (WASAPI loopback)
 python interpreter.py --list     # list capturable speakers
 python interpreter.py --to ja     # translate captions to Japanese (or en/zh/ko/...) via local ollama
+python interpreter.py --to ja --overlay  # translucent on-screen captions OVER the call window
 python interpreter.py --to ja --suggest  # press F9 for a reply you can say back (+ JA gloss)
 python interpreter.py --to ja --auto-suggest  # auto-line up a reply under each question
 python interpreter.py --to ja --ollama-model qwen2.5:14b  # stronger LLM for cleaner translation
@@ -158,6 +159,13 @@ needs Ollama running). With `--suggest`, press F9 in a live foreign-language cal
 Koe drafts a reply you can say back — in the call's language plus a gloss in yours;
 `--role "..."` sets a persona and `--context <file>` pre-loads briefing material (your
 resume, the job description, the agenda) so replies are grounded in it. Stop with Ctrl+C.
+
+With `--overlay`, captions (source + translation + suggested reply) also render
+as a translucent, click-through, always-on-top strip near the bottom of the
+screen — so you can keep the call window focused and never look at a terminal.
+Adjust `overlay_opacity` / `overlay_font_size` in `config.json`. Known limits:
+display-only, and fullscreen-*exclusive* apps (some games) can cover it —
+windowed/borderless apps are fine.
 
 The VAD voicing threshold is **auto-calibrated** at startup — Koe measures the loopback
 noise floor for ~1 s and sets the gate just above it, so you don't hand-tune `--threshold`

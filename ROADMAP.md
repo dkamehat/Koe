@@ -21,6 +21,11 @@ live in [docs/DECISIONS.md](docs/DECISIONS.md).
   startup and derives its voicing threshold (robust low-percentile × margin, clamped),
   so `--threshold` no longer needs hand-tuning per machine/source (`--no-calibrate`
   to opt out).
+- **Overlay captions** (`interpreter.py --overlay`) — translucent, click-through,
+  always-on-top caption strip (source + translation + suggested reply) over the
+  call window. Display-only by contract (D17). Spec: docs/specs/overlay-v1.md.
+- **Tiered development protocol** (docs/AGENTS.md) — top-tier model writes
+  specs/reviews, cheaper tier implements (`/implement-spec`, `.claude/agents/`).
 - **Koe Talk v1** (`talk.py`) — sequential voice conversation with a local LLM:
   semantic end-of-turn detection (「…けど」 waits, 「…ですか？」 answers fast),
   epoch-cancelled interruption (hotkey; voice barge-in in `--echo-mode
@@ -51,9 +56,8 @@ In rough priority order — smallest / lowest-risk first:
 - [ ] **Extract the interpreter's VAD loop into a shared Segmenter class** —
   talk.py deliberately did not touch interpreter.py (zero regression risk);
   migrate both onto one class only behind an equivalence test.
-- [ ] **On-screen overlay captions** — a translucent, always-on-top window over the call
-  showing the live caption + translation. Display-only — never re-transcribe on the GPU
-  path (the dictation overlay was removed for exactly that regression).
+- [ ] **Overlay polish after real-call use** — feedback-driven: position/size presets,
+  hide-when-silent, multi-monitor placement. (v1 shipped; display-only contract stands.)
 
 ## Non-goals
 
