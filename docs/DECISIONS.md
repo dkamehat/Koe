@@ -391,6 +391,21 @@ SPEAKING, now applied symmetrically to THINKING.
 - Enforced: `TurnEngine.on_block` (THINKING branch), `_think_voice_run`,
   `tests/test_talk.py::test_thinking_ignores_single_noise_blip`,
   `test_speech_during_thinking_cancels_and_merges` (updated for the debounce).
+- **addendum #3 (same session, deeper root cause):** the debounce above was
+  necessary but NOT sufficient in the DEFAULT `mute` echo mode. `mute`'s mic
+  gate in `talk.py` only skipped blocks during `SPEAKING`, so during the
+  (SAPI-inflated, multi-second) `THINKING` window the mic stayed hot and
+  sustained room noise still cancel-merged the reply before TTS could start —
+  live result: `turns=0`, no reply ever completed the whole session. Fix:
+  `mute` mode now skips the mic for the WHOLE floor-held window
+  (`THINKING` + `SPEAKING` + `mic_hold_until`), consistent with mute's
+  premise that the AI holds the floor from turn commit, not from audio start.
+  Merge-on-resume stays available in `headphones` mode (opt-in hot mic);
+  in `mute`, F8 is the deliberate interrupt. The `_think_voice_run` debounce
+  still governs `headphones` mode.
+- Enforced: `talk.py` audio-branch mute gate (`turns.state in (THINKING,
+  SPEAKING)`). Note: this is an I/O-edge gate, not pure-testable — it composes
+  the pure `TurnEngine` (tested) with the mic-skip policy.
 
 ## Backlog (not fixed): per-fragment language auto-detection is fragile
 

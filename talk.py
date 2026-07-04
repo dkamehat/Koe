@@ -602,10 +602,18 @@ def cmd_run(text_mode: bool, device: int | None, role: str | None,
                           f"|{bar:<30}| {turns.state}{RESET}",
                           file=sys.stderr, flush=True)
                     last_dbg = time.time()
-                # Mute mode: the mic is dead while the AI's voice is playing —
-                # structurally echo-proof (D23) — and stays shut a beat after
-                # the reply so the buffered audio tail can't re-enter.
-                if echo == "mute" and (turns.state == turns.SPEAKING
+                # Mute mode: the mic is dead the whole time the AI holds the
+                # floor — from turn commit (THINKING) through playback
+                # (SPEAKING), plus a beat after (mic_hold_until) so the
+                # buffered audio tail can't re-enter. Covering THINKING too is
+                # essential, not cosmetic: with a slow backend (SAPI) THINKING
+                # can last seconds, and a live mic there lets ambient room
+                # noise cancel-and-merge the reply before it ever completes
+                # (observed live: turns=0, no reply ever finished). Merge-on-
+                # resume ("あ、それと…") stays fully available in headphones
+                # mode, where the user opts into a hot mic; here, F8 is the
+                # deliberate interrupt (D23).
+                if echo == "mute" and (turns.state in (turns.THINKING, turns.SPEAKING)
                                        or time.time() < mic_hold_until):
                     continue
                 if not handle(turns.on_block(voiced)):
