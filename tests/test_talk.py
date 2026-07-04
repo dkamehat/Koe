@@ -152,7 +152,12 @@ def test_speech_during_thinking_cancels_and_merges():
     say(eng, "今日の予定を教えて。")
     c1 = quiet(eng, 10)
     assert isinstance(c1, Commit)
-    act = eng.on_block(True)                 # user resumes before any audio
+    # Debounced like SPEAKING's barge-in: sustained voice (barge_blocks
+    # consecutive blocks), not a single blip, is required to cancel.
+    act = eng.on_block(True)
+    act = eng.on_block(True)
+    assert act is None                       # still under the debounce
+    act = eng.on_block(True)                 # 3rd consecutive block -> cancel
     assert isinstance(act, Cancel) and act.merged
     assert act.epoch == c1.epoch + 1 and eng.state == eng.LISTENING
     say(eng, "あと明日の分もまとめて。")
@@ -160,6 +165,20 @@ def test_speech_during_thinking_cancels_and_merges():
     assert isinstance(c2, Commit)
     assert c2.text == "今日の予定を教えて。 あと明日の分もまとめて。"
     assert c2.epoch == c1.epoch + 2
+
+def test_thinking_ignores_single_noise_blip():
+    # A single voiced block (breathing, a chair creak, mic hum) must NOT
+    # cancel a reply that's already generating — only sustained voice should
+    # (observed live: ambient room noise alone was cancelling every reply).
+    eng = TurnEngine()
+    say(eng, "今日の予定を教えて。")
+    c1 = quiet(eng, 10)
+    assert isinstance(c1, Commit)
+    assert eng.on_block(True) is None
+    assert eng.on_block(False) is None       # gap resets the debounce run
+    assert eng.on_block(True) is None
+    assert eng.on_block(True) is None
+    assert eng.state == eng.THINKING          # reply is still pending, uncancelled
 
 def test_barge_key_interrupts_speech():
     eng = TurnEngine()

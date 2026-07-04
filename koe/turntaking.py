@@ -188,6 +188,7 @@ class TurnEngine:
         self._silence_blocks = 0         # blocks since the last voiced block
         self._heard_voice = False        # any voice since the turn started
         self._barge_run = 0              # consecutive voiced blocks while SPEAKING
+        self._think_voice_run = 0        # consecutive voiced blocks while THINKING
 
     # --- event: one ~100 ms audio block was classified voiced/quiet ---------
     def on_block(self, voiced: bool) -> Commit | Cancel | None:
@@ -199,10 +200,17 @@ class TurnEngine:
                 self._silence_blocks += 1
             return self._maybe_commit()
         if self.state == self.THINKING:
-            # Nothing is playing yet, so this can only be the user (or a cough
-            # — cheap either way): cancel the pending reply and keep the text
-            # so the resumed speech extends the same turn.
+            # Debounced the same way as SPEAKING's barge-in (barge_blocks
+            # consecutive voiced blocks): a single noisy block (breathing, a
+            # chair creak, mic hum) must not cancel a reply that's already
+            # generating — only a SUSTAINED resumption of speech should.
+            # Without this, ambient room noise alone can prevent the AI from
+            # ever finishing a reply outside a silent room (observed live).
             if voiced:
+                self._think_voice_run += 1
+            else:
+                self._think_voice_run = 0
+            if self._think_voice_run >= self.barge_blocks:
                 return self._cancel(merge=True)
             return None
         if self.state == self.SPEAKING:
@@ -303,6 +311,7 @@ class TurnEngine:
         self._silence_blocks = 0
         self._heard_voice = False
         self._barge_run = 0
+        self._think_voice_run = 0
 
 
 # --- conversation history (what the LLM sees) ----------------------------------

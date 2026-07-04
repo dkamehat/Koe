@@ -371,6 +371,45 @@ Candidate future spec: default `--text` mode to `voice_backend="text"` unless
 `--voice-backend` is explicit, or print a "still speaking…" cue before the
 next `you:` prompt.
 
+## D24 — addendum #2 (owner testing, 2026-07): THINKING-state voice detection had no debounce — ambient room noise alone could prevent the AI from ever finishing a reply
+
+`on_block` cancelled+merged on a SINGLE voiced block (100 ms) while
+THINKING — no minimum-duration gate at all, unlike SPEAKING's barge-in
+(`barge_blocks`, "long enough to reject coughs and echo transients"). In a
+live mic test in a normal (non-silent) room, ambient noise (rms ~0.01–0.04,
+well below real speech) kept re-triggering the merge-cancel every time, so
+the AI never got a single reply through the LLM+TTS pipeline before being
+cancelled — every turn accreted into one growing, garbled blob (compounding
+with the addendum above and with D28's merge semantics). **Fixed**:
+`TurnEngine` now requires `barge_blocks` (default 3 = 300 ms) *consecutive*
+voiced blocks during THINKING too, via a new `_think_voice_run` counter reset
+alongside `_barge_run` in `_reset_turn`. 300 ms is negligible for a genuine
+「あ、それと…」 continuation (a real phrase easily sustains that long) but
+rejects single-block noise blips — the same tradeoff already validated for
+SPEAKING, now applied symmetrically to THINKING.
+
+- Enforced: `TurnEngine.on_block` (THINKING branch), `_think_voice_run`,
+  `tests/test_talk.py::test_thinking_ignores_single_noise_blip`,
+  `test_speech_during_thinking_cancels_and_merges` (updated for the debounce).
+
+## Backlog (not fixed): per-fragment language auto-detection is fragile
+
+Same live mic test: a short, quiet fragment was transcribed as Korean
+(`아니 왜요`) while the owner was speaking Japanese. Koe Talk's fragments are
+cut much shorter (0.4 s hang, D27) than dictation's one-shot utterance or the
+Interpreter's caption segments, giving Whisper's language auto-detect (D01/
+`Config.language = None`, deliberately kept auto to support JP/EN code-
+switching, D04) far less acoustic evidence per call — short+quiet fragments
+are inherently more likely to be mis-identified as an unrelated language,
+producing fluent-sounding garbage that then feeds the merge logic above.
+**Deliberately not fixed here**: unlike the debounce bug, this has no
+single obviously-correct fix (candidates: bias `language=` from the
+conversation's already-established language after turn 1; raise `MIN_SPEECH`
+for fragments; add a confidence/no-speech-probability gate) and, per D14,
+a quality-affecting STT change needs a bench number before its default
+changes — not just live anecdotes. Tracked in the private roadmap backlog;
+revisit with `bench.py`-style measurement before changing fragment STT behavior.
+
 ---
 
 *When you make a new non-trivial decision (or reject an approach with evidence),
