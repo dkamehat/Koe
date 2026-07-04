@@ -63,6 +63,15 @@ roadmap toward it. When prioritizing, prefer work that moves toward that ideal.
    thread.
 8. **Display-only UI on the GPU path** — never re-transcribe for a UI feature.
 
+## Tiered development (cost control)
+
+Specs and reviews are written by a top-tier model; implementation runs on a
+cheaper tier. The protocol, roles, and token-efficiency rules live in
+**docs/AGENTS.md**; specs live in **docs/specs/** (template included). To run
+one: `/implement-spec docs/specs/<name>.md`. If you are the implementer agent,
+your instructions are `.claude/agents/koe-implementer.md` — the spec is your
+whole context; escalate rather than improvise.
+
 ## Development workflow
 
 ```bash
