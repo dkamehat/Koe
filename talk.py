@@ -16,7 +16,7 @@ Usage:
     python talk.py --role "英会話の練習相手。優しく訂正して"   # persona
     python talk.py --context brief.md    # ground replies in a briefing file
     python talk.py --ollama-model qwen2.5:14b   # stronger model for the reply
-    python talk.py --voice-backend sapi  # force a TTS backend (voicevox/sapi/text)
+    python talk.py --voice-backend sapi  # force a TTS backend (aivisspeech/voicevox/sapi/text)
     python talk.py --speaker 3           # VOICEVOX style id (GET /speakers lists them)
     python talk.py --echo-mode headphones  # enable voice barge-in (see below)
     python talk.py --patience 1.5        # wait longer at pauses before replying
@@ -53,8 +53,8 @@ Pipeline (single event mailbox; the TurnEngine is the only decision maker):
     player     ─► ("play_start"/…) ─┤      (segments fragments, dispatches
     hotkey     ─► ("barge",)       ─┘       LLM/TTS work, tracks latency)
 
-Requires a mic + `ollama serve` running. TTS degrades VOICEVOX → SAPI → text
-(the conversation never dies, it just gets quieter). Stop with Ctrl+C.
+Requires a mic + `ollama serve` running. TTS degrades AivisSpeech → VOICEVOX
+→ SAPI → text (the conversation never dies, it just gets quieter). Ctrl+C stops.
 """
 
 from __future__ import annotations

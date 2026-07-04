@@ -67,15 +67,19 @@ class Voice:
 
 
 class VoicevoxVoice(Voice):
-    """Local VOICEVOX server. `speaker` is a style id (GET /speakers lists
-    installed voices; 3 = ずんだもん ノーマル in the default install)."""
+    """Local VOICEVOX-compatible server. `speaker` is a style id (GET
+    /speakers lists installed voices; 3 = ずんだもん ノーマル in the default
+    VOICEVOX install). Also serves the AivisSpeech rung, which speaks the same
+    API on a different port — `name` distinguishes which server this instance
+    talks to (never mix a speaker id across servers, see koe/voice.py)."""
 
     name = "voicevox"
 
-    def __init__(self, url: str, speaker: int):
+    def __init__(self, url: str, speaker: int, *, name: str = "voicevox"):
         super().__init__()
         self.url = url.rstrip("/")
         self.speaker = speaker
+        self.name = name
         # Own session, thread-confined to the TTS worker (same rule as the
         # translator/responder sessions — D05).
         self._session = requests.Session()
@@ -151,18 +155,22 @@ def _sapi_available() -> bool:
         return False
 
 
-def pick_voice_backend(requested: str, voicevox_ok: bool, sapi_ok: bool) -> str:
-    """The fallback-chain decision, pure so it's CI-tested: an explicit request
-    is honored if available (else text-only, loudly — a silent stand-in would
-    fake the experience, same rationale as bench's refiner warning); "auto"
-    walks voicevox -> sapi -> text."""
+def pick_voice_backend(requested: str, aivis_ok: bool, voicevox_ok: bool,
+                       sapi_ok: bool) -> str:
+    """"auto" walks aivisspeech -> voicevox -> sapi -> text (best voice first).
+    Explicit "aivisspeech" / "voicevox" honored if reachable, else "text"
+    LOUDLY (the existing is_unwanted_fallback contract, unchanged)."""
     r = (requested or "auto").lower()
+    if r == "aivisspeech":
+        return "aivisspeech" if aivis_ok else "text"
     if r == "voicevox":
         return "voicevox" if voicevox_ok else "text"
     if r == "sapi":
         return "sapi" if sapi_ok else "text"
     if r in ("text", "none"):
         return "text"
+    if aivis_ok:
+        return "aivisspeech"
     if voicevox_ok:
         return "voicevox"
     if sapi_ok:
@@ -184,12 +192,15 @@ def is_unwanted_fallback(requested: str, got: str) -> bool:
 
 def build_voice(cfg, requested: str | None = None) -> Voice:
     want = (requested or getattr(cfg, "voice_backend", "auto") or "auto").lower()
-    got = pick_voice_backend(want, _voicevox_available(cfg.voicevox_url),
-                             _sapi_available())
+    aivis_ok = _voicevox_available(cfg.aivisspeech_url)
+    vv_ok = _voicevox_available(cfg.voicevox_url)
+    got = pick_voice_backend(want, aivis_ok, vv_ok, _sapi_available())
     if is_unwanted_fallback(want, got):
         print(f"! TTS backend {want!r} unavailable — replies will be text-only. "
               f"(VOICEVOX: start the app at {cfg.voicevox_url}; SAPI: pip install pyttsx3)",
               file=sys.stderr, flush=True)
+    if got == "aivisspeech":
+        return VoicevoxVoice(cfg.aivisspeech_url, cfg.aivisspeech_speaker, name="aivisspeech")
     if got == "voicevox":
         return VoicevoxVoice(cfg.voicevox_url, cfg.voicevox_speaker)
     if got == "sapi":

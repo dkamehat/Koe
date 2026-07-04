@@ -1,4 +1,4 @@
-# Spec: aivisspeech — AivisSpeech rung in the TTS ladder  (status: ready)
+# Spec: aivisspeech — AivisSpeech rung in the TTS ladder  (status: implemented)
 
 ## Goal
 

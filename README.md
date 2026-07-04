@@ -205,8 +205,10 @@ What makes it a conversation rather than a voice chatbot:
 - **The conversation becomes text.** Say 「貼って」 and the last reply is pasted
   into whatever app has focus. Say 「終了」 to end.
 
-Voice output uses a local ladder: **[VOICEVOX](https://voicevox.hiroshiba.jp/)**
-if its app is running (best Japanese, free) → Windows SAPI (`pip install
+Voice output uses a local ladder, best voice first:
+**[AivisSpeech](https://aivis-project.com/)** if its app is running (the most
+natural local Japanese; VOICEVOX-compatible API) →
+**[VOICEVOX](https://voicevox.hiroshiba.jp/)** → Windows SAPI (`pip install
 pyttsx3`) → text-only. Needs Ollama running (same as the ③ refiner; a stronger
 model helps: `--ollama-model qwen2.5:14b`).
 
@@ -220,6 +222,9 @@ model helps: `--ollama-model qwen2.5:14b`).
 
 ## Troubleshooting
 
+- **Redo the initial setup** → `python run.py --setup` reopens the first-run
+  wizard (model / microphone / hotkey mode). It also appears automatically on
+  the very first launch.
 - **Keys not captured** → run via `run-admin.bat` (Administrator).
 - **Wrong microphone** → `python run.py --list-devices`, then set `input_device` in `config.json`.
 - **Hotkey doesn't fire** → `python run.py --diagnose-keys`, press the key, use the printed name.

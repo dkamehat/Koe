@@ -166,9 +166,10 @@ python talk.py --debug              # ターン別レイテンシ計測（gap p5
 - **会話が成果物になる。** 「貼って」で直前の返答がフォーカス中のアプリに入力され、
   「終了」で会話が終わる。
 
-音声出力はローカルの梯子：**[VOICEVOX](https://voicevox.hiroshiba.jp/)** が起動中
-ならそれを（日本語品質最高・無料）→ Windows SAPI（`pip install pyttsx3`）→
-テキストのみ。Ollama の起動が必要です（③整形と同じ。強いモデル推奨:
+音声出力はローカルの梯子（良い声から順に）：**[AivisSpeech](https://aivis-project.com/)**
+が起動中ならそれを（最も自然な日本語・VOICEVOX互換API）→
+**[VOICEVOX](https://voicevox.hiroshiba.jp/)** → Windows SAPI（`pip install
+pyttsx3`）→ テキストのみ。Ollama の起動が必要です（③整形と同じ。強いモデル推奨:
 `--ollama-model qwen2.5:14b`）。
 
 ## 仕組み
@@ -181,6 +182,8 @@ python talk.py --debug              # ターン別レイテンシ計測（gap p5
 
 ## トラブルシューティング
 
+- **設定をやり直したい** → `python run.py --setup` で初回セットアップ
+  ウィザード（モデル／マイク／ホットキー方式）を再表示。初回起動時は自動で開きます。
 - **キーが効かない** → `run-admin.bat`（管理者）で起動。
 - **マイクが違う** → `python run.py --list-devices` で番号を確認し `config.json` の `input_device` に設定。
 - **ホットキーが反応しない** → `python run.py --diagnose-keys` でキーを押し、表示名を使う。

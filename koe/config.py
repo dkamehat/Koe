@@ -101,6 +101,15 @@ class Config:
     # Windows SAPI (needs `pip install pyttsx3`), else text-only. Same
     # local-server-with-fallback pattern as the ③ refiner.
     voice_backend: str = "auto"
+    # AivisSpeech: a VOICEVOX-compatible local TTS server (default port 10101)
+    # with more natural Japanese voices. When voice_backend="auto" it is probed
+    # BEFORE VOICEVOX — better voice wins when both are running.
+    aivisspeech_url: str = "http://127.0.0.1:10101"   # 127.0.0.1, same reason as ollama_url
+    # Style id on the AivisSpeech server. Speaker ids are NOT shared between
+    # servers (a VOICEVOX id is meaningless on AivisSpeech — that's why each rung
+    # carries its own). 888753760 = Anneli ノーマル, the default install's voice;
+    # GET /speakers on the server lists everything installed.
+    aivisspeech_speaker: int = 888753760
     # 127.0.0.1 for the same reason as ollama_url above.
     voicevox_url: str = "http://127.0.0.1:50021"
     # VOICEVOX style id (3 = ずんだもん ノーマル in the default install;

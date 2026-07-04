@@ -13,7 +13,7 @@ from koe.turntaking import (COMPLETE, INCOMPLETE, NEUTRAL, QUESTION,
                             bound_reply_tokens, build_system_prompt,
                             classify_completeness, parse_talk_command,
                             sanitize_for_speech, wait_ms)
-from koe.voice import (is_unwanted_fallback, pick_voice_backend,
+from koe.voice import (VoicevoxVoice, is_unwanted_fallback, pick_voice_backend,
                        wav_bytes_to_float32)
 
 
@@ -390,21 +390,40 @@ def test_percentiles_and_stats():
 # --- TTS backend selection & WAV decoding ----------------------------------------------
 
 def test_voice_fallback_chain():
-    assert pick_voice_backend("auto", True, True) == "voicevox"
-    assert pick_voice_backend("auto", False, True) == "sapi"
-    assert pick_voice_backend("auto", False, False) == "text"
+    # aivisspeech -> voicevox -> sapi -> text, best voice first.
+    assert pick_voice_backend("auto", False, True, True) == "voicevox"
+    assert pick_voice_backend("auto", False, False, True) == "sapi"
+    assert pick_voice_backend("auto", False, False, False) == "text"
     # An explicit but unavailable backend degrades LOUDLY to text — a silent
     # stand-in would fake the experience (same rule as bench's refiner warning).
-    assert pick_voice_backend("voicevox", False, True) == "text"
-    assert pick_voice_backend("sapi", False, False) == "text"
-    assert pick_voice_backend("none", True, True) == "text"
+    assert pick_voice_backend("voicevox", False, False, True) == "text"
+    assert pick_voice_backend("sapi", False, False, False) == "text"
+    assert pick_voice_backend("none", True, True, True) == "text"
+    # auto with aivis+voicevox both up → aivisspeech wins (better voice first).
+    assert pick_voice_backend("auto", True, True, True) == "aivisspeech"
+    # auto with only voicevox up (aivis down) → voicevox.
+    assert pick_voice_backend("auto", False, True, True) == "voicevox"
+    # explicit "voicevox" while only aivis is up → explicit ask not honored,
+    # loud degrade to text (not a silent swap to the other server).
+    assert pick_voice_backend("voicevox", True, False, True) == "text"
+    # explicit "aivisspeech" while up → honored.
+    assert pick_voice_backend("aivisspeech", True, True, True) == "aivisspeech"
 
 def test_fallback_warning_only_when_request_not_honored():
     assert is_unwanted_fallback("voicevox", "text") is True
     assert is_unwanted_fallback("voicevox", "voicevox") is False
+    assert is_unwanted_fallback("aivisspeech", "text") is True
+    assert is_unwanted_fallback("aivisspeech", "aivisspeech") is False
     assert is_unwanted_fallback("auto", "text") is False       # any rung is fine
     assert is_unwanted_fallback("none", "text") is False       # text IS the ask
     assert is_unwanted_fallback("NONE", "text") is False       # case-insensitive
+
+def test_voicevox_voice_name_override():
+    # Construct only; no HTTP. Default name stays "voicevox" for existing
+    # callers; the AivisSpeech rung passes name="aivisspeech" explicitly since
+    # it's the same VoicevoxVoice class talking to a different server.
+    assert VoicevoxVoice("http://x", 1).name == "voicevox"
+    assert VoicevoxVoice("http://x", 1, name="aivisspeech").name == "aivisspeech"
 
 def test_wav_roundtrip_downmix():
     import io
