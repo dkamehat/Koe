@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "koe"
-version = "0.1.0"
+# Kept in sync by hand with koe/__init__.py's __version__ — see the matching
+# comment there.
+version = "0.2.0"
 description = "Local, offline voice dictation for Windows (inspired by Aqua Voice)"
 readme = "README.md"
 requires-python = ">=3.12"

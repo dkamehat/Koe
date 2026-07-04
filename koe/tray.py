@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import threading
 
+from . import __version__
 from .app import KoeApp
 from .config import Config
 
@@ -35,7 +36,7 @@ def _title(app: KoeApp) -> str:
     cloud = app.refiner.name in ("claude", "openai")
     where = "cloud" if cloud else "local"
     return (f"Koe · {app.cfg.hotkey}/{app.cfg.hotkey_mode} · "
-            f"③{app.refiner.name}({where}) · {app._status_text}")
+            f"③{app.refiner.name}({where}) · {app._status_text} · v{__version__}")
 
 
 def _status_color(app: KoeApp) -> str:

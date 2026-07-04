@@ -68,6 +68,7 @@ import numpy as np
 import requests
 
 from interpreter import _block_rms, _is_hallucination, calibrate_threshold
+import koe
 from koe.config import Config
 from koe.latency import SessionStats, TurnTimeline
 from koe.refiner import _find_boundary
@@ -468,7 +469,7 @@ def cmd_run(text_mode: bool, device: int | None, role: str | None,
             print(f"! could not register barge hotkey {key!r}: {exc}",
                   file=sys.stderr, flush=True)
 
-    print(f"\n{BOLD}Koe Talk{RESET} — {'text mode (type below)' if text_mode else 'listening'}."
+    print(f"\n{BOLD}Koe Talk v{koe.__version__}{RESET} — {'text mode (type below)' if text_mode else 'listening'}."
           f"\n  • LLM → {BOLD}{llm}{RESET} [local]   voice → {BOLD}{voice.name}{RESET}"
           + ("" if text_mode else
              f"\n  • echo mode → {BOLD}{echo}{RESET}"

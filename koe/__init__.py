@@ -1,3 +1,6 @@
 """Koe (声) — fully on-device voice dictation."""
 
-__version__ = "0.1.0"
+# Single source of truth for the shipped version (tray title, talk/interpreter
+# banners, release zip naming). Kept in sync by hand with pyproject.toml's
+# `version` field — see the matching comment there.
+__version__ = "0.2.0"
