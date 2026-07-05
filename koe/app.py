@@ -3,7 +3,10 @@
 Hold the hotkey, speak, release. Audio is transcribed on-device and the cleaned
 text is typed into whatever window has focus. Nothing leaves the machine.
 
-Run with --setup to (re)open the first-run setup wizard at any time.
+Run with --setup to (re)open the first-run setup wizard at any time (then the
+tray starts as usual). Run with --setup-only to open the wizard and exit without
+starting the tray — the control center (launcher.py) uses this so "redo setup"
+reconfigures config.json without leaving an untracked dictation instance behind.
 """
 
 from __future__ import annotations
@@ -455,12 +458,18 @@ def main(argv: list[str] | None = None) -> None:
         elif a == "--device" and i + 1 < len(argv):
             cfg.device = argv[i + 1]
 
-    if (first_run or "--setup" in argv) and "--console" not in argv:
+    setup = "--setup" in argv or "--setup-only" in argv
+    if (first_run or setup) and "--console" not in argv:
         try:
             from .firstrun import run_wizard
             run_wizard(cfg)
         except Exception as exc:   # belt over run_wizard's own braces
             print(f"[setup wizard unavailable: {exc}] starting with defaults.")
+        # --setup-only: reconfigure and exit, never start the tray. The control
+        # center spawns this so its "redo setup" button can't orphan a dictation
+        # instance that isn't tracked by (or stoppable from) the window.
+        if "--setup-only" in argv:
+            return
 
     # Default: system-tray shell. Use --console for the plain terminal loop.
     if "--console" in argv:

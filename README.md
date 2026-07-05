@@ -75,6 +75,21 @@ system tray (look under the `^` overflow on Windows 11).
 (pause and think freely), press again to stop → cleaned text appears in the focused app.
 Right-click the tray icon for settings; use `run.py --console` for a plain terminal.
 
+### Control Center — start/stop every service from one window
+
+Koe now has three end-user services (Dictation, Interpreter+captions, Talk). To
+start and stop any of them without memorising command-line flags, double-click:
+
+```powershell
+.\Koe.bat        # opens the Koe Control Center window
+```
+
+Each row has a status lamp and a start/stop button. Services run as their own
+processes, so one crashing never takes the others down; closing the window stops
+everything it started (no leftover processes). *"Redo first-run setup"* re-opens
+the wizard, and the mic-conflict line warns if you run two mic services at once.
+`run.bat` / `run-admin.bat` still launch Dictation directly for power users.
+
 ## The ③ Refiner — context-aware cleanup (pluggable, local-first)
 
 | `refiner_backend` | What it does | Privacy / cost |

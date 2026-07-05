@@ -38,6 +38,13 @@ live in [docs/DECISIONS.md](docs/DECISIONS.md).
   「貼って」/「終了」 spoken commands, `--text` mode (mic-less validation on any
   OS), `--debug` per-turn latency timelines. Pure core + executable-spec tests
   in `koe/turntaking.py` / `tests/test_talk.py` (D22–D28).
+- **Control Center** (`Koe.bat` → `launcher.py`) — one small window to start/stop
+  each end-user service (Dictation, Interpreter+captions, Talk) on demand, each
+  as its own child process (graceful degradation: one crash doesn't sink the
+  others). Status lamps self-heal; closing the window stops everything it started
+  (no orphans); mic-conflict warning; "redo setup" via `run.py --setup-only`.
+  Pure core (`koe/launcher.py`) is CI-tested; tkinter/subprocess at the edge.
+  Spec: docs/specs/control-center.md.
 
 ## Next
 

@@ -1,4 +1,4 @@
-# Spec: control-center — one launcher to start/stop every Koe service  (status: ready)
+# Spec: control-center — one launcher to start/stop every Koe service  (status: implemented)
 
 ## Goal
 
@@ -143,13 +143,23 @@ def main() -> None:
   (`audio_conflicts` non-empty after the toggle), show a non-blocking warning
   label under the rows: 「マイクを使う機能が複数動いています（ディクテーションと会話）。
   片方だけの利用をおすすめします。」 — warn, never block (invariant 3).
-- Footer: 「初回セットアップをやり直す」 button → spawn `run.py --setup` as a
-  one-shot child (not tracked; it exits on its own); and 「すべて終了して閉じる」
+- Footer: 「初回セットアップをやり直す」 button → spawn `run.py --setup-only` as a
+  one-shot child (see the app.py change below); and 「すべて終了して閉じる」
   button → `mgr.stop_all()` then `root.destroy()`.
+  (SPEC FIX after review: the draft said spawn `run.py --setup`, claiming "it
+  exits on its own once the wizard closes." That is FALSE — plain `--setup` runs
+  the wizard then falls through to start the dictation tray, which would leave an
+  untracked dictation instance the window can't stop and that orphans on close.
+  The correct behavior needs a wizard-only mode: `--setup-only`, added to
+  koe/app.py:main, runs the wizard and returns without starting the tray.)
 - `WM_DELETE_WINDOW` (the [X]) → same as すべて終了して閉じる (stop_all + destroy).
   No orphan children ever outlive the window.
 - `after(700)` poll refreshes every lamp/button from `mgr.is_running(key)` so a
   child that exits or crashes on its own flips its lamp to grey without a click.
+  (SPEC FIX after review: the poll must ALSO recompute the mic-conflict warning,
+  not just the lamps — otherwise, if a mic service self-exits, the warning
+  lingers on stale state. Factor the warning recompute into one helper called by
+  both the toggle handler and the poll.)
   (700 ms: responsive enough, far below any human "did it stop?" patience,
   cheap — three poll() calls.)
 
@@ -201,6 +211,7 @@ Unknown-key filtering already makes these forward/backward compatible (D18).
 | launcher.py | new — 2-line root entry → koe.launchergui.main |
 | Koe.bat | new — double-click entry (mirrors run.bat) |
 | koe/config.py | +3 fields (interpreter_to/overlay/suggest) with WHY comment |
+| koe/app.py | +`--setup-only` (wizard then return, no tray) — review fix, see §2 |
 | tests/test_launcher.py | new — pure tests only |
 | README.md / README.ja.md | reviewer adds a "起動（コントロールセンター）" section |
 | ROADMAP.md | reviewer moves the launcher into Shipped |

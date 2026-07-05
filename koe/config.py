@@ -134,6 +134,14 @@ class Config:
     overlay_opacity: float = 0.85   # window alpha (0.5 barely-there .. 1.0 solid)
     overlay_font_size: int = 18     # pt; bump for presentations / small screens
 
+    # --- Control Center (launcher.py): default flags when it starts a service ---
+    # Interpreter's proven-good combo is --to ja --overlay --suggest. These let a
+    # user pick captions-only or drop suggestions without editing code. Dictation
+    # and Talk take no launch flags — they read the rest of this config directly.
+    interpreter_to: str = "ja"        # target translation language; "" = captions only
+    interpreter_overlay: bool = True  # translucent on-screen caption strip
+    interpreter_suggest: bool = True  # F9 reply suggestions
+
     @classmethod
     def load(cls) -> "Config":
         if CONFIG_PATH.exists():

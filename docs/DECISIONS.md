@@ -425,6 +425,49 @@ a quality-affecting STT change needs a bench number before its default
 changes — not just live anecdotes. Tracked in the private roadmap backlog;
 revisit with `bench.py`-style measurement before changing fragment STT behavior.
 
+## D29 — The Control Center launches services as separate processes, not in-process threads
+
+Koe grew to three end-user services (Dictation tray, Interpreter+captions, Talk),
+each a mature standalone script with its own main loop, audio capture, `keyboard`
+global hook, and — for the Interpreter overlay — a tkinter root that owns its
+thread. A single window to start/stop them on demand had two possible shapes:
+
+- **Rejected — one process, each service a thread.** Would mean rewriting three
+  proven pillars to be re-entrant and stoppable mid-flight, and fighting real
+  contention: pystray and tkinter both want *the* main thread; two tkinter roots
+  (overlay + a control window) in one process is unsupported; a crash in one
+  service's thread could take the whole UI down. High risk for zero user benefit.
+- **Chosen — the control center only *spawns and tracks child processes*.** Each
+  service keeps its exact current entry point and runs isolated. This is the same
+  "local server with graceful fallback" instinct as the Ollama/VOICEVOX pattern,
+  applied to our own subsystems: one service crashing leaves the others and the
+  control window alive, and its status lamp flips to grey on its own (the window
+  polls `Popen.poll()` every 700 ms). It also keeps the valuable logic pure and
+  CI-testable — `koe/launcher.py` (service data, command building, conflict
+  detection, a `ServiceManager` whose spawn call is *injected*) imports nothing
+  heavier than `dataclasses`; all subprocess/tkinter I/O lives in
+  `koe/launchergui.py` at the edge (invariant 2).
+
+Corollaries locked in during review:
+- **Closing the window stops every child it started** (`WM_DELETE_WINDOW` and the
+  「すべて終了して閉じる」 button share one handler → `stop_all` → `destroy`). A
+  service with no visible controller is worse than having to reopen the window;
+  no orphaned python.exe. (Rejected: minimise-to-tray / keep-running — a later
+  enhancement, not v1.)
+- **"Redo setup" needed a wizard-only mode.** The first draft spawned
+  `run.py --setup`, assuming it "exits on its own" — but `--setup` runs the wizard
+  then falls through to start the dictation tray, orphaning an untracked instance.
+  Added `--setup-only` to `koe/app.py:main` (wizard, then return; no tray). Same
+  lesson as D04/D28: a plausible-sounding assumption about a subsystem's behaviour
+  is a bug until the code path is actually read.
+- **Window form factor, not a tray icon, for v1** — discoverability for the
+  「誰でも使える」 audience. Because the UI is a thin edge over `ServiceManager`, a
+  tray front-end later is a small addition, not a rewrite.
+
+Enforced/covered by `tests/test_launcher.py` (pure): command shapes, no-double-
+spawn, self-exit detection, `stop_all`, mic-conflict detection, headless import.
+Spec: docs/specs/control-center.md.
+
 ---
 
 *When you make a new non-trivial decision (or reject an approach with evidence),
