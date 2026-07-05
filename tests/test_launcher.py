@@ -10,10 +10,9 @@ import builtins
 import importlib
 from types import SimpleNamespace
 
-import pytest
-
 from koe.launcher import (ServiceManager, audio_conflicts, build_command,
-                           interpreter_args, services)
+                           interpreter_args, parse_run_target, services,
+                           setup_command)
 
 
 def _cfg(to="ja", overlay=True, suggest=True):
@@ -32,6 +31,23 @@ def test_services_are_the_three_end_user_ones():
     for s in svcs:
         assert s.label
         assert s.script
+
+
+# --- parse_run_target -----------------------------------------------------------
+
+def test_parse_run_target_services():
+    assert parse_run_target(["--run", "interpreter", "--to", "ja"]) == (
+        "interpreter", ["--to", "ja"],
+    )
+    assert parse_run_target(["--run", "dictation"]) == ("dictation", [])
+    assert parse_run_target(["--run", "talk", "--debug"]) == ("talk", ["--debug"])
+
+
+def test_parse_run_target_defaults_to_control():
+    assert parse_run_target([]) == ("control", [])
+    assert parse_run_target(["--foo"]) == ("control", ["--foo"])
+    # unknown target: front door, not a crash (invariant 3) — args preserved
+    assert parse_run_target(["--run", "bogus"]) == ("control", ["--run", "bogus"])
 
 
 # --- interpreter_args -----------------------------------------------------------
@@ -74,13 +90,38 @@ def test_build_command_shapes():
     ) == ["/py", "/repo/talk.py"]
 
 
-def test_build_command_frozen_raises():
+def test_build_command_source_unchanged():
     svcs = {s.key: s for s in services()}
-    cfg = _cfg()
-    with pytest.raises(NotImplementedError):
-        build_command(
-            svcs["dictation"], cfg, python_exe="/py", repo_root="/repo", frozen=True,
-        )
+    cfg = _cfg(to="ja", overlay=True, suggest=True)
+
+    assert build_command(
+        svcs["interpreter"], cfg, python_exe="/py", repo_root="/repo",
+    ) == ["/py", "/repo/interpreter.py", "--to", "ja", "--overlay", "--suggest"]
+
+
+def test_build_command_frozen_reinvokes_self():
+    svcs = {s.key: s for s in services()}
+    cfg = _cfg(to="ja", overlay=True, suggest=True)
+
+    assert build_command(
+        svcs["interpreter"], cfg, python_exe="/py", repo_root="/repo", frozen=True,
+    ) == ["/py", "--run", "interpreter", "--to", "ja", "--overlay", "--suggest"]
+
+    assert build_command(
+        svcs["dictation"], cfg, python_exe="/py", repo_root="/repo", frozen=True,
+    ) == ["/py", "--run", "dictation"]
+
+
+# --- setup_command ----------------------------------------------------------------
+
+def test_setup_command_both_modes():
+    assert setup_command(
+        python_exe="/py", repo_root="/repo", frozen=True,
+    ) == ["/py", "--run", "dictation", "--setup-only"]
+
+    assert setup_command(
+        python_exe="/py", repo_root="/repo", frozen=False,
+    ) == ["/py", "/repo/run.py", "--setup-only"]
 
 
 # --- ServiceManager --------------------------------------------------------------
@@ -184,3 +225,28 @@ def test_launcher_module_imports_headless(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
     importlib.reload(launcher_module)  # re-run the module body under the shim
+
+
+def test_cli_module_imports_headless(monkeypatch):
+    """koe/cli.py must import no service (koe.app/interpreter/talk/
+    koe.launchergui) at module scope — only the branch main() actually chose
+    may. Block the heavy stack each service needs at ITS OWN module scope
+    (keyboard for koe.app, numpy for interpreter.py/talk.py) plus the rest of
+    the Windows-only stack, so a hoisted import fails the reload (same shim
+    technique as test_launcher_module_imports_headless)."""
+    import koe.cli as cli_module
+
+    blocked = {
+        "keyboard", "tkinter", "subprocess", "sounddevice", "pyaudiowpatch",
+        "faster_whisper", "uiautomation", "comtypes", "pystray", "pyttsx3",
+        "numpy",
+    }
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name.split(".")[0] in blocked:
+            raise ImportError(f"blocked for test: {name}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    importlib.reload(cli_module)  # re-run the module body under the shim

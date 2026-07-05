@@ -36,10 +36,14 @@ machine** — nothing is ever sent to the cloud.
 
 1. Grab **`Koe-win64-cuda.zip`** from the [latest release](https://github.com/dkamehat/Koe/releases/latest).
 2. Unzip it anywhere.
-3. Double-click **`Koe.exe`**. The first launch downloads the Whisper model once, then runs offline.
+3. Double-click **`Koe.exe`** → the **Control Center** opens. Start any service
+   (Dictation, Interpreter+captions, Talk) from there; the first launch of a
+   service that needs Whisper downloads the model once, then runs offline.
 
-`config.json` and `dictionary.txt` are created next to `Koe.exe`, so the app stays
-self-contained and portable.
+One `Koe.exe` is every service: the Control Center launches each by re-running
+itself (`Koe.exe --run interpreter`, etc.), so you can also start one directly
+from a shell. `config.json` and `dictionary.txt` are created next to `Koe.exe`,
+so the app stays self-contained and portable.
 
 ### Option B — run from source (for developers)
 

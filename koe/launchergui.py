@@ -128,6 +128,7 @@ class _ControlWindow:
         argv = build_command(
             service, self.cfg,
             python_exe=sys.executable, repo_root=data_dir(),
+            frozen=getattr(sys, "frozen", False),
         )
         self.mgr.toggle(service.key, argv)
         self._refresh_row(service.key)
@@ -161,10 +162,17 @@ class _ControlWindow:
         # One-shot child that genuinely exits on its own: --setup-only runs the
         # wizard and returns WITHOUT starting the dictation tray (plain --setup
         # would fall through to the tray, leaving an untracked instance the
-        # window can't stop). See koe/app.py:main.
+        # window can't stop). See koe/app.py:main. setup_command mirrors
+        # build_command's frozen branch so the packaged build re-invokes itself
+        # (--run dictation --setup-only) instead of spawning a nonexistent run.py.
+        from .launcher import setup_command
         from .paths import data_dir
 
-        _spawn([sys.executable, str(data_dir() / "run.py"), "--setup-only"])
+        argv = setup_command(
+            python_exe=sys.executable, repo_root=data_dir(),
+            frozen=getattr(sys, "frozen", False),
+        )
+        _spawn(argv)
 
     def _on_close(self) -> None:
         # No orphan children ever outlive the window — same action whether

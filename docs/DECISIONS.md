@@ -468,6 +468,14 @@ Enforced/covered by `tests/test_launcher.py` (pure): command shapes, no-double-
 spawn, self-exit detection, `stop_all`, mic-conflict detection, headless import.
 Spec: docs/specs/control-center.md.
 
+**Addendum (frozen-multiservice spec):** `build_command`'s frozen branch no
+longer raises. It now re-invokes `sys.executable` (== `Koe.exe` once packaged)
+as `Koe.exe --run <service> …`, dispatched by `koe/cli.py` — a lazy routing
+edge that imports only the chosen service's `main()`, never all of them. The
+one-folder COLLECT build (not one-file) makes each re-invoke cheap: shared
+DLLs already sit on disk, so `Koe.exe --run …` doesn't re-unpack anything.
+Spec: docs/specs/frozen-multiservice.md.
+
 ---
 
 *When you make a new non-trivial decision (or reject an approach with evidence),

@@ -45,6 +45,13 @@ live in [docs/DECISIONS.md](docs/DECISIONS.md).
   (no orphans); mic-conflict warning; "redo setup" via `run.py --setup-only`.
   Pure core (`koe/launcher.py`) is CI-tested; tkinter/subprocess at the edge.
   Spec: docs/specs/control-center.md.
+- **Packaged multi-service `Koe.exe`** — the release build is no longer
+  dictation-only: one `Koe.exe` dispatches to every service (`Koe.exe --run
+  interpreter …`), and the Control Center launches each by re-invoking itself,
+  so a downloaded .exe (no Python) gives non-developers the whole toolkit. Lazy
+  imports (invariant 2) are force-bundled for PyInstaller via
+  `collect_submodules("koe")` + the pillars' native deps. Spec:
+  docs/specs/frozen-multiservice.md.
 
 ## Next
 

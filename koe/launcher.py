@@ -46,6 +46,21 @@ def services() -> list[Service]:
     ]
 
 
+RUN_TARGETS = ("dictation", "interpreter", "talk")  # control is the default
+
+
+def parse_run_target(argv: list[str]) -> tuple[str, list[str]]:
+    """Map process args to (target, rest). If argv starts with "--run <t>" and t
+    is a known service → (t, argv-after-those-two-tokens). Anything else, incl.
+    an empty argv or an unknown/missing target → ("control", argv). Pure; the
+    dispatcher (koe/cli.py) turns the target into an actual main() call.
+    WHY 'unknown → control': a mistyped --run opens the front door, never a
+    silent crash (invariant 3)."""
+    if len(argv) >= 2 and argv[0] == "--run" and argv[1] in RUN_TARGETS:
+        return argv[1], argv[2:]
+    return "control", argv
+
+
 def interpreter_args(cfg) -> list[str]:
     """Flags after interpreter.py, from config:
     ["--to", cfg.interpreter_to] only when interpreter_to is truthy (""=captions
@@ -71,18 +86,25 @@ def service_args(service: Service, cfg) -> list[str]:
     return []
 
 
+def setup_command(*, python_exe, repo_root, frozen: bool) -> list[str]:
+    """Argv for the Control Center's 'redo setup' one-shot (wizard, then exit —
+    koe/app.py:main --setup-only). frozen → [python_exe, "--run", "dictation",
+    "--setup-only"]; source → [python_exe, "<repo_root>/run.py", "--setup-only"].
+    Symmetric with build_command so both modes stay in one tested place."""
+    if frozen:
+        return [python_exe, "--run", "dictation", "--setup-only"]
+    return [python_exe, f"{repo_root}/run.py", "--setup-only"]
+
+
 def build_command(service: Service, cfg, *, python_exe, repo_root, frozen: bool = False) -> list[str]:
     """Full argv to spawn: [python_exe, <repo_root>/<script>, *service_args].
-    frozen=True raises NotImplementedError with a one-line message (see non-goal).
     Pure: no os/subprocess — takes python_exe and repo_root as plain args so tests
     pass fakes ('/py', '/repo')."""
+    args = service_args(service, cfg)
     if frozen:
-        raise NotImplementedError(
-            "control center: launching services is not supported in the "
-            "packaged build yet"
-        )
-    script_path = f"{repo_root}/{service.script}"
-    return [python_exe, script_path, *service_args(service, cfg)]
+        # python_exe is sys.executable == Koe.exe; re-invoke self as the service.
+        return [python_exe, "--run", service.key, *args]
+    return [python_exe, f"{repo_root}/{service.script}", *args]
 
 
 def audio_conflicts(running_keys, all_services) -> list[str]:

@@ -31,9 +31,14 @@
 
 1. [最新リリース](https://github.com/dkamehat/Koe/releases/latest)から **`Koe-win64-cuda.zip`** を入手。
 2. 好きな場所に解凍。
-3. **`Koe.exe`** をダブルクリック。初回だけWhisperモデルをDLし、以降はオフライン動作。
+3. **`Koe.exe`** をダブルクリック →**コントロールセンター**が開きます。そこから各機能
+   （ディクテーション・通訳＋字幕・会話）を開始。Whisperを使う機能の初回だけモデルを
+   DLし、以降はオフライン動作。
 
-`config.json` と `dictionary.txt` は `Koe.exe` の隣に作られるので、フォルダごと持ち運べます。
+1つの `Koe.exe` が全機能を兼ねます：コントロールセンターは自分自身を再起動して各機能を
+起動する（`Koe.exe --run interpreter` など）ので、シェルから直接1つだけ起動することも
+できます。`config.json` と `dictionary.txt` は `Koe.exe` の隣に作られるので、フォルダごと
+持ち運べます。
 
 ### 方法B — ソースから実行（開発者向け）
 

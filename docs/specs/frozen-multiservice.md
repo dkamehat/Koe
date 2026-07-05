@@ -1,4 +1,4 @@
-# Spec: frozen-multiservice — one Koe.exe that runs every service  (status: ready)
+# Spec: frozen-multiservice — one Koe.exe that runs every service  (status: implemented)
 
 ## Goal
 
@@ -110,10 +110,7 @@ Routing (import the target and call it — nothing else runs):
 
 ```python
 def _hide_console() -> None:
-    """The one-folder exe is built console=True (services need a console for
-    logs/captions). For the Control Center that console is just noise behind the
-    window, and looks alarming to a non-developer — hide it. Best-effort: any
-    failure (non-Windows, no console, API quirk) silently no-ops (invariant 3)."""
+    """... hide it. Best-effort: any failure silently no-ops (invariant 3)."""
     try:
         import ctypes
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
@@ -122,6 +119,12 @@ def _hide_console() -> None:
     except Exception:
         pass
 ```
+
+(SPEC FIX after review: only hide a console THIS process owns. Guard with
+`GetConsoleProcessList(pids, 2) != 1 → return` before hiding — if >1 PID is
+attached, Koe.exe was launched from an existing shell and hiding its console
+would hide the user's own terminal, which the owner will hit the moment they
+run `Koe.exe` bare from PowerShell to test. Implemented in koe/cli.py.)
 
 ### 3. `koe/launchergui.py` — make the two spawn sites frozen-aware
 

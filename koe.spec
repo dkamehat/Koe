@@ -10,7 +10,7 @@
 import os
 import sys
 import glob
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas, binaries, hiddenimports = [], [], []
 
@@ -21,9 +21,14 @@ datas, binaries, hiddenimports = [], [], []
 #  - pystray / PIL                : tray icon
 #  - uiautomation / comtypes      : context grounding (focused-window read)
 #  - keyboard / pyperclip         : hotkeys + clipboard injection
+#  - pyaudiowpatch                : WASAPI loopback capture (Interpreter)
+#  - pyttsx3                      : SAPI TTS backend (Talk)
+#  - requests                     : Ollama/VOICEVOX/AivisSpeech HTTP + certifi cacert
+#  - numpy                        : VAD math (Interpreter/Talk)
 for pkg in (
     "ctranslate2", "faster_whisper", "onnxruntime", "sounddevice",
     "pystray", "PIL", "uiautomation", "comtypes", "keyboard", "pyperclip",
+    "pyaudiowpatch", "pyttsx3", "requests", "numpy",
 ):
     try:
         d, b, h = collect_all(pkg)
@@ -32,6 +37,13 @@ for pkg in (
         hiddenimports += h
     except Exception as e:  # a missing optional package shouldn't kill the build
         print(f"[koe.spec] collect_all({pkg}) skipped: {e}")
+
+# Force the modules PyInstaller's static analysis can't see because every
+# pillar imports lazily (invariant 2) — THE frozen pitfall: without these,
+# each service would crash on first use with ModuleNotFoundError even though
+# it imports fine from source.
+hiddenimports += ["interpreter", "talk", "tkinter", "tkinter.ttk"]
+hiddenimports += collect_submodules("koe")  # every koe/*.py, lazy or not
 
 # NVIDIA CUDA runtime DLLs (cuBLAS + cuDNN) shipped as pip wheels under
 # <venv>/Lib/site-packages/nvidia/**/bin/*.dll. CTranslate2 needs these at run
@@ -50,7 +62,7 @@ if os.path.exists("dictionary.txt.example"):
 block_cipher = None
 
 a = Analysis(
-    ["run.py"],
+    ["koe_main.py"],
     pathex=[],
     binaries=binaries,
     datas=datas,
