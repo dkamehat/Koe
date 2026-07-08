@@ -40,6 +40,11 @@ machine** — nothing is ever sent to the cloud.
    (Dictation, Interpreter+captions, Talk) from there; the first launch of a
    service that needs Whisper downloads the model once, then runs offline.
 
+> **First launch — Windows SmartScreen.** Koe ships unsigned (no code-signing
+> certificate yet), so Windows may show a blue *"Windows protected your PC"*
+> screen. Click **More info → Run anyway**. Everything still runs locally —
+> nothing is sent anywhere.
+
 One `Koe.exe` is every service: the Control Center launches each by re-running
 itself (`Koe.exe --run interpreter`, etc.), so you can also start one directly
 from a shell. `config.json` and `dictionary.txt` are created next to `Koe.exe`,
