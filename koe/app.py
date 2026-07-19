@@ -77,6 +77,13 @@ class KoeApp:
             self.recorder.begin()
         except Exception as exc:
             print(f"{YELLOW}mic warning: {exc}{RESET}")
+        else:
+            # Surface which physical device Koe resolved input_device to
+            # BEFORE the user ever tries to speak — wrong-device mismatches
+            # (e.g. a stale device index after a reboot/USB replug) are far
+            # easier to catch here than from a later "no audio detected".
+            if self.recorder.device_label:
+                print(f"{DIM}🎙 listening on: {self.recorder.device_label}{RESET}")
         t0 = time.time()
         engine = TranscriptionEngine(
             model=self.cfg.model,
@@ -147,7 +154,10 @@ class KoeApp:
             print(f"\r{YELLOW}… too short, skipped{RESET}            ")
             return
         if self.recorder.peak < 0.005:
-            print(f"\r{YELLOW}… no audio detected — check the mic/input device{RESET}")
+            label = self.recorder.device_label or "?"
+            print(f"\r{YELLOW}… no audio detected "
+                  f"(mic: {label}, peak={self.recorder.peak:.4f}) "
+                  f"— run --setup-only to pick a different device{RESET}")
             return
         print(f"\r{CYAN}◌ transcribing{RESET} {DIM}({dur:.1f}s audio)…{RESET}     ",
               end="", flush=True)

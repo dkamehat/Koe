@@ -9,6 +9,11 @@ and peak, cheaply, for level metering and clipping / no-signal detection.
 Set preroll_sec=0 (or enable_preroll=False) to fall back to opening the stream
 only while recording — no always-on microphone, at the cost of possible head
 clipping.
+
+`sounddevice` is imported lazily inside the methods that need it (invariant 2:
+this module must stay importable on CI, which has no audio stack). That also
+keeps `format_device_label` — the pure half of the "which mic did Koe actually
+open" diagnostic — unit-testable without a real device.
 """
 
 from __future__ import annotations
@@ -17,7 +22,32 @@ import threading
 from collections import deque
 
 import numpy as np
-import sounddevice as sd
+
+
+def format_device_label(index: int | None, info: dict | None) -> str:
+    """Render a resolved input device as a short diagnostic string, e.g.
+    "#3: Microphone Array (Realtek)" or "既定: Realtek(R) Audio". `index` is
+    what Koe asked for (None = OS default); `info` is the dict `sounddevice`
+    resolved it to, or None if that query itself failed — a query failure must
+    never hide the more important "no audio" warning it's attached to, so this
+    degrades to a plain tag instead of raising.
+
+    Pure (no I/O) — the query lives in `_resolve_device_label` below."""
+    tag = "既定" if index is None else f"#{index}"
+    if info is None:
+        return f"{tag}（デバイス名を取得できませんでした）"
+    return f"{tag}: {info.get('name', '?')}"
+
+
+def _resolve_device_label(sd_module, index: int | None) -> str:
+    """I/O wrapper around format_device_label: ask sounddevice what `index`
+    actually resolves to. Never raises — this is a diagnostics nicety, not a
+    reason to fail a take (D15: never crash the pipeline over it)."""
+    try:
+        info = sd_module.query_devices(index, "input")
+    except Exception:
+        info = None
+    return format_device_label(index, info)
 
 
 class Recorder:
@@ -43,7 +73,8 @@ class Recorder:
         # Cheap running signal stats for the meter / diagnostics.
         self._level = 0.0   # RMS of the most recent block (0..~1)
         self._peak = 0.0     # max |sample| since the take started
-        self._stream: sd.InputStream | None = None
+        self._stream = None  # sd.InputStream, opened lazily
+        self._device_label: str | None = None  # resolved by _open_stream()
 
     # --- audio callback ---------------------------------------------------
     def _callback(self, indata, frames, time_info, status):  # noqa: ARG002
@@ -64,6 +95,8 @@ class Recorder:
                     self._ring_samples -= self._ring.popleft().size
 
     def _open_stream(self) -> None:
+        import sounddevice as sd
+
         self._stream = sd.InputStream(
             samplerate=self.sample_rate,
             channels=1,
@@ -73,6 +106,7 @@ class Recorder:
             blocksize=0,  # let the driver choose (most compatible)
         )
         self._stream.start()
+        self._device_label = _resolve_device_label(sd, self.input_device)
 
     # --- lifecycle --------------------------------------------------------
     def begin(self) -> None:
@@ -138,6 +172,15 @@ class Recorder:
         """Max |sample| seen during the current/last take (>=0.99 ≈ clipping)."""
         return self._peak
 
+    @property
+    def device_label(self) -> str | None:
+        """Which device the currently/most-recently opened stream resolved to
+        (see format_device_label), or None if no stream has opened yet — the
+        answer to "is Koe listening to the mic I think it is"."""
+        return self._device_label
+
     @staticmethod
     def list_devices() -> str:
+        import sounddevice as sd
+
         return str(sd.query_devices())

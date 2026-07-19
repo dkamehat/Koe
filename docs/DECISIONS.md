@@ -476,6 +476,38 @@ one-folder COLLECT build (not one-file) makes each re-invoke cheap: shared
 DLLs already sit on disk, so `Koe.exe --run …` doesn't re-unpack anything.
 Spec: docs/specs/frozen-multiservice.md.
 
+## D30 — "no audio detected" must say which mic it means
+
+Dictation's `peak < 0.005` warning told the user *that* the take was silent but
+never *which device* Koe actually captured from. On real hardware this makes
+three distinct root causes (Windows blocking mic access for an unsigned/desktop
+app — WASAPI shared mode returns silence, not an error, when blocked; a stale
+`input_device` index after a reboot/USB replug pointing at the wrong physical
+device; a second, differently-configured `Koe.exe` copy) indistinguishable from
+the console output alone, turning support into guesswork.
+
+Fix: `Recorder` now resolves and exposes `device_label` (e.g. `"#3: Microphone
+Array (Realtek)"` or `"既定: Realtek(R) Audio"`) whenever it opens a stream —
+printed proactively once at model-load time (`load_model`, before the user ever
+tries to speak) and again, with the observed peak value, in the no-audio
+warning itself. A peak of exactly `0.0000` on the *correct* device points at an
+OS/permission block; a nonzero-but-quiet peak or the *wrong* device name points
+at device selection instead — one console paste now discriminates between them.
+
+`format_device_label` is pure (index + a `sounddevice.query_devices()`-shaped
+dict → string) and unit-tested without a real device; the query itself
+(`_resolve_device_label`) never raises — a diagnostics query failing must never
+mask the more important warning it's attached to (D15). This also fixed a
+latent invariant-2 gap: `koe/recorder.py` imported `sounddevice` at module
+scope, so it could never actually be imported on CI (nothing exercised it, so
+nothing failed) — the import is now lazy inside the two methods that need it,
+same as the other Windows-only modules. `koe.spec` already force-bundles
+`sounddevice` via `collect_all` regardless of import location, so this doesn't
+touch the frozen build.
+
+- Enforced: `tests/test_recorder.py` (`format_device_label` cases, headless
+  import).
+
 ---
 
 *When you make a new non-trivial decision (or reject an approach with evidence),
